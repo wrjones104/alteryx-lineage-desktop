@@ -39,104 +39,133 @@
     </div>
   </div>
 
-  <div id="main-view" class="hidden">
-    <div class="container mx-auto p-4 md:p-8">
-      <header class="text-center mb-8">
-        <h1 class="text-3xl md:text-4xl font-bold text-slate-900">Alteryx Data Lineage Visualizer</h1>
-        <p class="mt-2 text-lg text-slate-600">Map your Alteryx workflows.</p>
-      </header>
-      <main>
-        <div id="upload-container" class="bg-white p-4 rounded-xl shadow-md">
-          <div id="drop-zone" class="drop-zone w-full rounded-lg p-4 text-center cursor-pointer">
-            <div class="flex flex-row items-center justify-center gap-4">
-              <svg class="w-10 h-10 text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-                stroke-width="1.5" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round"
-                  d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m.75 12l3 3m0 0l3-3m-3 3v-6m-1.5-9H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-              </svg>
-              <div class="text-left">
-                <p class="text-slate-700 font-semibold">Drag & drop your .yxmd files here</p>
-                <p class="text-slate-500 text-sm mt-1">or click to select files</p>
-              </div>
-            </div>
-            <input type="file" id="file-input" multiple accept=".yxmd" class="hidden">
+  <div id="main-view" class="hidden h-screen flex flex-col">
+    <nav class="bg-white shadow-md p-2 flex items-center justify-between flex-shrink-0">
+      <div class="flex items-center gap-4">
+        <h1 class="text-xl font-bold text-slate-800">Alteryx Lineage Visualizer</h1>
+        <button id="add-workflow-btn"
+          class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg text-sm">Add
+          Workflow</button>
+        <button id="view-toggle-btn"
+          class="text-slate-600 hover:text-blue-600 font-semibold py-2 px-4 rounded-lg text-sm">Switch to Report
+          View</button>
+        <button id="print-graph-btn"
+          class="text-slate-600 hover:text-blue-600 font-semibold py-2 px-4 rounded-lg text-sm">Print Graph</button>
+      </div>
+
+      <div class="flex items-center gap-4">
+        <div id="graph-search-container" class="relative">
+          <div class="flex items-center gap-2">
+            <input type="search" id="graph-search-input" placeholder="Find a node..."
+              class="w-full max-w-xs bg-white rounded border border-gray-300 focus:border-indigo-500 text-base outline-none text-gray-700 py-1 px-3 leading-8 transition-colors">
+            <button id="graph-search-btn"
+              class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg">Go</button>
           </div>
-          <div id="loader" class="hidden flex-col items-center justify-center mt-4">
-            <div class="loader"></div>
-            <p class="mt-2 text-slate-600">Parsing...</p>
-          </div>
+          <div id="graph-search-results"
+            class="hidden absolute z-10 w-full bg-white rounded-md shadow-lg mt-1 max-h-60 overflow-y-auto"></div>
         </div>
 
-        <div id="results-container" class="mt-8">
-          <div class="flex flex-wrap justify-between items-center mb-4 gap-4">
-            <div>
-              <button id="view-toggle-btn"
-                class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition-colors">Switch
-                to Report View</button>
-              <button id="print-graph-btn"
-                class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition-colors">Print
-                Graph</button>
-            </div>
-          </div>
-
-          <div id="graph-view">
-            <div class="flex justify-between items-center mb-4">
-              <h2 class="text-2xl font-bold text-slate-900">Graph View</h2>
-              <div class="relative">
-                <div class="flex items-center gap-2">
-                  <input type="search" id="graph-search-input" placeholder="Find a node..."
-                    class="w-full max-w-xs bg-white rounded border border-gray-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 text-base outline-none text-gray-700 py-1 px-3 leading-8 transition-colors duration-200 ease-in-out"
-                    autocomplete="off">
-                  <button id="graph-search-btn"
-                    class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg transition-colors">Go</button>
-                </div>
-                <div id="graph-search-results"
-                  class="hidden absolute z-10 w-full bg-white rounded-md shadow-lg mt-1 max-h-60 overflow-y-auto"></div>
-              </div>
-            </div>
-            <div id="graph-container" class="graph-container relative"></div>
-            <div id="tooltip" class="tooltip"></div>
-          </div>
-
-          <div id="report-view" class="hidden">
-            <div class="flex justify-between items-center mb-4">
-              <h2 class="text-2xl font-bold text-slate-900">Report View</h2>
-              <input type="text" id="report-search-input" placeholder="Search workflows..."
-                class="w-full max-w-xs bg-white rounded border border-gray-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 text-base outline-none text-gray-700 py-1 px-3 leading-8 transition-colors duration-200 ease-in-out">
-            </div>
-            <div id="results" class="space-y-6"></div>
-          </div>
+        <div id="report-search-container" class="relative hidden">
+          <input type="text" id="report-search-input" placeholder="Search report..."
+            class="w-full max-w-xs bg-white rounded border border-gray-300 focus:border-indigo-500 text-base outline-none text-gray-700 py-1 px-3 leading-8 transition-colors">
         </div>
-      </main>
+      </div>
+    </nav>
+
+    <div id="content-container" class="flex-grow relative">
+      <div id="graph-view" class="absolute inset-0">
+        <div id="graph-container" class="w-full h-full"></div>
+        <div id="tooltip" class="tooltip"></div>
+      </div>
+      <div id="report-view" class="hidden absolute inset-0 overflow-y-auto p-8">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-2xl font-bold text-slate-900">Report View</h2>
+        </div>
+        <div id="results" class="space-y-6"></div>
+      </div>
     </div>
+  </div>
 
-    <div id="connections-modal"
-      class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center">
-      <div class="relative mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white">
-        <div class="flex justify-between items-center border-b pb-2">
-          <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">Node Inspector</h3>
-          <button id="close-connections-modal" class="text-gray-500 hover:text-gray-800">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"
-              xmlns="http://www.w3.org/2000/svg">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-            </svg>
-          </button>
+  <div id="connections-modal"
+    class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center p-4">
+    <div class="relative mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white flex flex-col max-h-[85vh]">
+
+      <div class="flex justify-between items-center border-b pb-2 flex-shrink-0">
+        <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">Node Inspector</h3>
+        <button id="close-connections-modal" class="text-gray-500 hover:text-gray-800">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+
+      <div class="mt-4 overflow-y-auto" id="modal-content"></div>
+
+      <div id="alias-editor" class="hidden mt-4 pt-4 border-t flex-shrink-0">
+        <p class="text-sm text-gray-500 mb-1 text-left font-semibold">Original Name:</p>
+        <p id="original-name" class="text-xs text-gray-500 bg-gray-100 p-2 rounded break-all text-left"></p>
+        <p class="text-sm text-gray-500 mt-4 mb-1 text-left font-semibold">Alias:</p>
+        <input type="text" id="alias-input"
+          class="w-full bg-white rounded border border-gray-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 text-base outline-none text-gray-700 py-1 px-3 leading-8 transition-colors duration-200 ease-in-out"
+          placeholder="e.g., Centric Source">
+        <div class="flex gap-2 mt-4">
+          <button id="save-alias-btn"
+            class="px-4 py-2 bg-blue-500 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-300">Save</button>
+          <button id="cancel-alias-btn"
+            class="px-4 py-2 bg-gray-200 text-gray-800 text-base font-medium rounded-md w-full shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-300">Cancel</button>
         </div>
-        <div class="mt-4" id="modal-content"></div>
-        <div id="alias-editor" class="hidden mt-4 pt-4 border-t">
-          <p class="text-sm text-gray-500 mb-1 text-left font-semibold">Original Name:</p>
-          <p id="original-name" class="text-xs text-gray-500 bg-gray-100 p-2 rounded break-all text-left"></p>
-          <p class="text-sm text-gray-500 mt-4 mb-1 text-left font-semibold">Alias:</p>
-          <input type="text" id="alias-input"
-            class="w-full bg-white rounded border border-gray-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 text-base outline-none text-gray-700 py-1 px-3 leading-8 transition-colors duration-200 ease-in-out"
-            placeholder="e.g., Centric Source">
-          <div class="flex gap-2 mt-4">
-            <button id="save-alias-btn"
-              class="px-4 py-2 bg-blue-500 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-300">Save</button>
-            <button id="cancel-alias-btn"
-              class="px-4 py-2 bg-gray-200 text-gray-800 text-base font-medium rounded-md w-full shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-300">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="add-workflow-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center">
+    <div class="bg-white rounded-xl shadow-md relative">
+      <button id="close-add-workflow-modal-btn" class="absolute top-2 right-2 text-gray-500 hover:text-gray-800">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+        </svg>
+      </button>
+      <div id="upload-container" class="p-8">
+        <div id="drop-zone" class="drop-zone w-full rounded-lg p-10 text-center cursor-pointer">
+          <div class="flex flex-col items-center justify-center">
+            <svg class="w-16 h-16 text-slate-400 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none"
+              viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m.75 12l3 3m0 0l3-3m-3 3v-6m-1.5-9H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+            </svg>
+            <p class="text-slate-700 font-semibold">Drag & drop your .yxmd files here</p>
+            <p class="text-slate-500 text-sm mt-1">or click to select files</p>
           </div>
         </div>
+        <input type="file" id="file-input" multiple accept=".yxmd" class="hidden">
+        <div id="loader" class="hidden flex-col items-center justify-center mt-6">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="relative mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white">
+    <div class="flex justify-between items-center border-b pb-2">
+      <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">Node Inspector</h3>
+      <button id="close-connections-modal" class="text-gray-500 hover:text-gray-800">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+        </svg>
+      </button>
+    </div>
+    <div class="mt-4" id="modal-content"></div>
+    <div id="alias-editor" class="hidden mt-4 pt-4 border-t">
+      <p class="text-sm text-gray-500 mb-1 text-left font-semibold">Original Name:</p>
+      <p id="original-name" class="text-xs text-gray-500 bg-gray-100 p-2 rounded break-all text-left"></p>
+      <p class="text-sm text-gray-500 mt-4 mb-1 text-left font-semibold">Alias:</p>
+      <input type="text" id="alias-input"
+        class="w-full bg-white rounded border border-gray-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 text-base outline-none text-gray-700 py-1 px-3 leading-8 transition-colors duration-200 ease-in-out"
+        placeholder="e.g., Centric Source">
+      <div class="flex gap-2 mt-4">
+        <button id="save-alias-btn"
+          class="px-4 py-2 bg-blue-500 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-300">Save</button>
+        <button id="cancel-alias-btn"
+          class="px-4 py-2 bg-gray-200 text-gray-800 text-base font-medium rounded-md w-full shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-300">Cancel</button>
       </div>
     </div>
   </div>

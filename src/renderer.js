@@ -1,4 +1,4 @@
-// src/renderer.js
+// src/renderer.js (Final Corrected Version)
 
 // --- App State ---
 let allData = { workflows: [], datasources: [], connections: [] };
@@ -11,7 +11,8 @@ let loader, fileInput, dropZone, viewToggleBtn, printGraphBtn, reportView,
     graphSearchBtn, graphSearchResults, connectionsModal, connectionsModalContent,
     connectionsModalTitle, closeConnectionsModalBtn, aliasEditor,
     originalNameEl, aliasInput, saveAliasBtn, cancelAliasBtn,
-    welcomeView, mainView, createBtn, openBtn, recentsList;
+    welcomeView, mainView, createBtn, openBtn, recentsList, addWorkflowModal,
+    addWorkflowBtn, closeAddWorkflowModalBtn, graphSearchContainer, reportSearchContainer;
 
 // --- Core Functions ---
 async function handleFiles(files) {
@@ -22,13 +23,9 @@ async function handleFiles(files) {
                 const fileContent = await readFileAsText(file);
                 const workflowData = parseWorkflow(fileContent, file.name);
                 await window.electronAPI.saveWorkflow(workflowData);
-
-                // Re-fetch all data from the database now that it's been updated
                 allData = await window.electronAPI.loadAllData();
-                // Re-render the graph and report with the new data
                 displayReport(allData.workflows, allData.datasources, allData.connections);
                 renderGraph(allData.workflows, allData.datasources, allData.connections);
-
             } catch (error) {
                 console.error(`Error processing file ${file.name}:`, error);
             }
@@ -52,13 +49,11 @@ function parseWorkflow(xmlString, fileName) {
     const xmlDoc = parser.parseFromString(xmlString, "text/xml");
     const nodes = xmlDoc.getElementsByTagName('Node');
     const results = { name: fileName, inputs: [], outputs: [] };
-
     for (const node of nodes) {
         let path, type, value;
         const annotationNode = node.querySelector('Annotation');
         const annotationText = annotationNode?.querySelector('AnnotationText')?.textContent || annotationNode?.querySelector('DefaultAnnotationText')?.textContent || '';
         const lineageMatch = annotationText.match(/--- lineage ---([\s\S]*?)---/);
-
         if (lineageMatch) {
             const content = lineageMatch[1];
             let currentSection = null;
@@ -84,22 +79,24 @@ function parseWorkflow(xmlString, fileName) {
             }
             continue;
         }
-
         const plugin = node.querySelector('GuiSettings')?.getAttribute('Plugin');
         if (!plugin) continue;
-
         if (plugin.includes('Input') || plugin.includes('Output')) {
             const fileElement = node.querySelector('Properties > Configuration > File');
             if (fileElement) {
                 path = fileElement.textContent;
                 const isDb = path.startsWith('odbc:') || path.startsWith('aka:');
                 type = isDb ? 'Database' : 'File';
-                value = isDb && path.includes('|||') ? { connection: path.split('|||')[0], query: path.split('|||')[1] || '' } : { connection: path, query: '' };
+                const queryElement = node.querySelector('Properties > Configuration > Query');
+                const queryText = queryElement ? queryElement.textContent.trim() : '';
+                value = {
+                    connection: isDb && path.includes('|||') ? path.split('|||')[0] : path,
+                    query: queryText || (isDb && path.includes('|||') ? (path.split('|||')[1] || '') : '')
+                };
                 const targetArray = plugin.includes('Input') ? results.inputs : results.outputs;
                 targetArray.push({ type, value });
             }
         }
-
         if (plugin.includes('DynamicInput')) {
             const templateFileElement = node.querySelector('Properties > Configuration > InputConfiguration > Configuration > File');
             if (templateFileElement) {
@@ -109,7 +106,6 @@ function parseWorkflow(xmlString, fileName) {
                 results.inputs.push({ type, value });
             }
         }
-
         const engineSettings = node.querySelector('EngineSettings');
         if (engineSettings && engineSettings.getAttribute('Macro')?.includes('Input Data Selector.yxmc')) {
             const valueElement = node.querySelector('Properties > Configuration > Value');
@@ -147,12 +143,10 @@ function displayReport(workflows, datasources, connections, searchTerm = '') {
         }
         return false;
     });
-
     if (filteredWorkflows.length === 0) {
         resultsDiv.innerHTML = '<p class="text-slate-500">No workflows match your search.</p>';
         return;
     }
-
     filteredWorkflows.forEach(workflow => {
         const card = document.createElement('div');
         card.className = 'bg-white p-6 rounded-xl shadow-md';
@@ -215,114 +209,51 @@ function renderGraph(workflows, datasources, connections) {
         graphContainer.append("div").attr("class", "flex items-center justify-center h-full text-slate-500").text("No data. Drop workflow files to start.");
         return;
     }
-
-    // --- Logic to find duplicate filenames ---
-    // 1. Create a frequency map to count how many times each base filename appears.
     const fileNameCounts = datasources.reduce((acc, ds) => {
-        // This handles both Windows and Unix-style paths
         const fileName = ds.name.split('\\').pop().split('/').pop();
         acc[fileName] = (acc[fileName] || 0) + 1;
         return acc;
     }, {});
-
-    // 2. Create a Set of filenames that are duplicates for quick lookup.
     const duplicateFileNames = new Set();
     for (const fileName in fileNameCounts) {
         if (fileNameCounts[fileName] > 1) {
             duplicateFileNames.add(fileName);
         }
     }
-
     const width = graphContainer.node().getBoundingClientRect().width;
-    const height = 600;
+    const height = graphContainer.node().getBoundingClientRect().height;
     const zoom = d3.zoom().on("zoom", e => g.attr("transform", e.transform));
     const svg = graphContainer.append("svg").attr("width", width).attr("height", height).call(zoom);
     const g = svg.append("g");
     const tooltip = d3.select(tooltipEl);
-
     const wfNodes = workflows.map(d => ({ id: `wf-${d.id}`, name: d.name, type: 'workflow' }));
-
     const dsNodes = datasources.map(d => {
         const fileName = d.name.split('\\').pop().split('/').pop();
-        // 3. Determine the "smart" name. If it's a duplicate, use the full path, otherwise use the short filename.
         const smartName = duplicateFileNames.has(fileName) ? d.name : fileName;
-
-        return {
-            id: `ds-${d.id}`,
-            name: d.name, // Original full name for tooltips
-            displayName: d.alias || smartName, // Alias wins, otherwise use our smart name
-            type: d.type,
-            alias: d.alias
-        };
+        return { id: `ds-${d.id}`, name: d.name, displayName: d.alias || smartName, type: d.type, alias: d.alias };
     });
-
     const nodes = [...wfNodes, ...dsNodes];
-
     d3Graph.nodes = nodes;
     d3Graph.svg = svg;
     d3Graph.zoom = zoom;
     d3Graph.width = width;
     d3Graph.height = height;
-
     const links = connections.map(d => ({ source: d.direction === 'input' ? `ds-${d.dsId}` : `wf-${d.workflowId}`, target: d.direction === 'input' ? `wf-${d.workflowId}` : `ds-${d.dsId}` }));
     const simulation = d3.forceSimulation(nodes).force("link", d3.forceLink(links).id(d => d.id).distance(100)).force("charge", d3.forceManyBody().strength(-300)).force("center", d3.forceCenter(width / 2, height / 2));
-
     svg.append("defs").append("marker").attr("id", "arrowhead").attr("viewBox", "-0 -5 10 10").attr("refX", 25).attr("refY", 0).attr("orient", "auto").attr("markerWidth", 8).attr("markerHeight", 8).append("svg:path").attr("d", "M0,-5L10,0L0,5").attr("fill", "#94a3b8");
-
     const link = g.append("g").selectAll("line").data(links).join("line").attr("class", "link").attr("stroke-width", 2).attr("marker-end", "url(#arrowhead)");
-
     const node = g.append("g").selectAll("g").data(nodes).join("g").call(drag(simulation));
-
     node.append("circle").filter(d => d.type === 'workflow').attr("r", 15).attr("class", "node-workflow");
     node.append("rect").filter(d => d.type === 'File' || d.type === 'Database').attr("width", 30).attr("height", 20).attr("x", -15).attr("y", -10).attr("rx", 3).attr("ry", 3).attr("class", "node-datasource");
     node.append("path").filter(d => d.type === 'API').attr('d', 'M-15,-10 h30 v20 h-30 z M-15,0 h30 M-10,-10 v20 M10,-10 v20').attr('class', 'node-api');
-
-    node.append("text")
-        .attr("class", "node-label")
-        .attr("dy", d => d.type === 'workflow' ? 25 : 22)
-        .attr("text-anchor", "middle")
-        .text(d => {
-            const label = d.displayName || d.name;
-            return label.length > 20 ? label.substring(0, 18) + '...' : label;
-        });
-
-    node.on("mouseover", (event, d) => {
-        tooltip.transition().duration(200).style("opacity", .9);
-        tooltip.html(d.name).style("left", (event.pageX + 5) + "px").style("top", (event.pageY - 28) + "px");
-    }).on("mouseout", () => {
-        tooltip.transition().duration(500).style("opacity", 0);
-    });
-
-    node.on('click', (event, d) => {
-        const nodeData = {
-            id: d.id,
-            name: d.name,
-            alias: d.alias,
-            type: d.type
-        };
-        showConnectionsModal(nodeData);
-    });
-
-    simulation.on("tick", () => {
-        link.attr("x1", d => d.source.x).attr("y1", d => d.source.y).attr("x2", d => d.target.x).attr("y2", d => d.target.y);
-        node.attr("transform", d => `translate(${d.x},${d.y})`);
-    });
-
+    node.append("text").attr("class", "node-label").attr("dy", d => d.type === 'workflow' ? 25 : 22).attr("text-anchor", "middle").text(d => { const label = d.displayName || d.name; return label.length > 20 ? label.substring(0, 18) + '...' : label; });
+    node.on("mouseover", (event, d) => { tooltip.transition().duration(200).style("opacity", .9); tooltip.html(d.name).style("left", (event.pageX + 5) + "px").style("top", (event.pageY - 28) + "px"); }).on("mouseout", () => { tooltip.transition().duration(500).style("opacity", 0); });
+    node.on('click', (event, d) => { const nodeData = { id: d.id, name: d.name, alias: d.alias, type: d.type }; showConnectionsModal(nodeData); });
+    simulation.on("tick", () => { link.attr("x1", d => d.source.x).attr("y1", d => d.source.y).attr("x2", d => d.target.x).attr("y2", d => d.target.y); node.attr("transform", d => `translate(${d.x},${d.y})`); });
     function drag(simulation) {
-        function dragstarted(event, d) {
-            if (!event.active) simulation.alphaTarget(0.3).restart();
-            d.fx = d.x;
-            d.fy = d.y;
-        }
-        function dragged(event, d) {
-            d.fx = event.x;
-            d.fy = event.y;
-        }
-        function dragended(event, d) {
-            if (!event.active) simulation.alphaTarget(0);
-            d.fx = null;
-            d.fy = null;
-        }
+        function dragstarted(event, d) { if (!event.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; }
+        function dragged(event, d) { d.fx = event.x; d.fy = event.y; }
+        function dragended(event, d) { if (!event.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }
         return d3.drag().on("start", dragstarted).on("drag", dragged).on("end", dragended);
     }
 }
@@ -345,51 +276,21 @@ function showConnectionsModal(nodeData) {
     const outputs = allData.connections.filter(c => (isWorkflow ? c.workflowId : c.dsId) === nodeId && c.direction === 'output');
     const dsMap = new Map(allData.datasources.map(ds => [ds.id, ds]));
     const wfMap = new Map(allData.workflows.map(wf => [wf.id, wf]));
-
-    // --- NEW: Gather all unique queries associated with this node ---
     const allConnections = [...inputs, ...outputs];
-    const allUniqueQueries = [...new Set(allConnections.map(c => c.query).filter(q => q))]; // Gets non-empty, unique queries
-
-    // This helper is now simpler, as it no longer handles query details.
+    const allUniqueQueries = [...new Set(allConnections.map(c => c.query).filter(q => q))];
     const createLinkList = (connections) => {
         if (connections.length === 0) return '<p class="text-sm text-gray-500">None</p>';
-        return `<ul class="list-disc pl-5 space-y-2">${connections.map(c => {
-            const otherNodeId = isWorkflow ? c.dsId : c.workflowId;
-            const otherNode = isWorkflow ? dsMap.get(otherNodeId) : wfMap.get(otherNodeId);
-            if (!otherNode) return '';
-            const displayName = otherNode.alias || otherNode.name;
-            const linkHTML = `<a href="#" onclick="window.panToNodeAndClose('${displayName.replace(/'/g, "\\'")}')" class="text-blue-600 hover:underline">${displayName}</a>`;
-            return `<li class="break-all">${linkHTML}</li>`;
-        }).join('')}</ul>`;
+        return `<ul class="list-disc pl-5 space-y-2">${connections.map(c => { const otherNodeId = isWorkflow ? c.dsId : c.workflowId; const otherNode = isWorkflow ? dsMap.get(otherNodeId) : wfMap.get(otherNodeId); if (!otherNode) return ''; const displayName = otherNode.alias || otherNode.name; const linkHTML = `<a href="#" onclick="window.panToNodeAndClose('${displayName.replace(/'/g, "\\'")}')" class="text-blue-600 hover:underline">${displayName}</a>`; return `<li class="break-all">${linkHTML}</li>`; }).join('')}</ul>`;
     };
-
     connectionsModalTitle.innerHTML = `<span class="font-normal">Inspector:</span> <b class="break-all">${nodeData.alias || nodeData.name}</b>`;
     let content = `<div class="grid grid-cols-2 gap-4 mt-4"><div><h4 class="font-semibold text-gray-800 border-b pb-1 mb-2">Inputs</h4>${createLinkList(isWorkflow ? inputs : outputs)}</div><div><h4 class="font-semibold text-gray-800 border-b pb-1 mb-2">Outputs</h4>${createLinkList(isWorkflow ? outputs : inputs)}</div></div>`;
-    
-    // --- NEW: Build the query details section if any queries exist ---
     if (!isWorkflow && allUniqueQueries.length > 0) {
         const uniqueId = `modal-query-main-${nodeId}`;
         const arrowId = `modal-arrow-main-${nodeId}`;
-        const queriesHTML = allUniqueQueries.map(q => 
-            // Add max-height and overflow classes to the <pre> tag to make it scrollable
-            `<pre class="bg-slate-100 p-2 rounded-md text-xs text-slate-800 max-h-60 overflow-y-auto">${q.trim()}</pre>`
-        ).join('<hr class="my-2">'); // Add a separator for multiple queries
-
-        content += `
-            <div class="mt-4 pt-4 border-t">
-                <button onclick="toggleQuery('${uniqueId}', '${arrowId}')" class="flex items-center text-sm font-semibold text-slate-700 hover:text-slate-900 focus:outline-none">
-                    <svg id="${arrowId}" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1 transition-transform duration-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
-                    Query Details
-                </button>
-                <div id="${uniqueId}" class="hidden mt-2 space-y-2">
-                    ${queriesHTML}
-                </div>
-            </div>`;
+        const queriesHTML = allUniqueQueries.map(q => `<pre class="bg-slate-100 p-2 rounded-md text-xs text-slate-800 max-h-60 overflow-y-auto">${q.trim()}</pre>`).join('<hr class="my-2">');
+        content += `<div class="mt-4 pt-4 border-t"><button onclick="toggleQuery('${uniqueId}', '${arrowId}')" class="flex items-center text-sm font-semibold text-slate-700 hover:text-slate-900 focus:outline-none"><svg id="${arrowId}" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1 transition-transform duration-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>Query Details</button><div id="${uniqueId}" class="hidden mt-2 space-y-2">${queriesHTML}</div></div>`;
     }
-    // -----------------------------------------------------------------
-
     connectionsModalContent.innerHTML = content;
-
     if (!isWorkflow) {
         aliasEditor.classList.remove('hidden');
         currentEditingDsId = nodeId;
@@ -398,18 +299,22 @@ function showConnectionsModal(nodeData) {
     } else {
         aliasEditor.classList.add('hidden');
     }
-    
     connectionsModal.classList.remove('hidden');
 }
 
 // --- Startup Block ---
 window.addEventListener('DOMContentLoaded', () => {
-    // Assign UI Elements from the DOM
+    // --- Assign UI Elements from the DOM ---
+    // Views
     welcomeView = document.getElementById('welcome-view');
     mainView = document.getElementById('main-view');
+
+    // Welcome View Elements
     createBtn = document.getElementById('create-new-btn');
     openBtn = document.getElementById('open-existing-btn');
     recentsList = document.getElementById('recents-list');
+
+    // Main View Elements
     dropZone = document.getElementById('drop-zone');
     fileInput = document.getElementById('file-input');
     loader = document.getElementById('loader');
@@ -419,10 +324,19 @@ window.addEventListener('DOMContentLoaded', () => {
     graphView = document.getElementById('graph-view');
     tooltipEl = document.getElementById('tooltip');
     resultsDiv = document.getElementById('results');
+
+    // Search Elements
+    graphSearchContainer = document.getElementById('graph-search-container');
+    reportSearchContainer = document.getElementById('report-search-container');
     reportSearchInput = document.getElementById('report-search-input');
     graphSearchInput = document.getElementById('graph-search-input');
     graphSearchBtn = document.getElementById('graph-search-btn');
     graphSearchResults = document.getElementById('graph-search-results');
+
+    // Modals and their content
+    addWorkflowModal = document.getElementById('add-workflow-modal');
+    addWorkflowBtn = document.getElementById('add-workflow-btn');
+    closeAddWorkflowModalBtn = document.getElementById('close-add-workflow-modal-btn');
     connectionsModal = document.getElementById('connections-modal');
     connectionsModalContent = document.getElementById('modal-content');
     connectionsModalTitle = document.getElementById('modal-title');
@@ -441,9 +355,6 @@ window.addEventListener('DOMContentLoaded', () => {
         allData = await window.electronAPI.loadAllData();
         displayReport(allData.workflows, allData.datasources, allData.connections);
         renderGraph(allData.workflows, allData.datasources, allData.connections);
-
-        welcomeView.classList.add('hidden');
-        mainView.classList.remove('hidden');
     };
 
     // --- Event Listeners for Welcome Screen ---
@@ -467,29 +378,63 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // --- Listen for 'Open Recent' message from the main menu ---
+    window.electronAPI.onOpenRecentFile(async (filePath) => {
+        if (filePath) {
+            const success = await window.electronAPI.openDbFile(filePath);
+            if (success) showMainView();
+        }
+    });
+
+    // --- Event Listeners for Add Workflow Modal ---
+    addWorkflowBtn.addEventListener('click', () => {
+        addWorkflowModal.classList.remove('hidden');
+    });
+
+    closeAddWorkflowModalBtn.addEventListener('click', () => {
+        addWorkflowModal.classList.add('hidden');
+    });
+
     // --- Event Listeners for Main View ---
     dropZone.addEventListener('click', () => fileInput.click());
     dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
     dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
-    dropZone.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('drag-over'); handleFiles(e.dataTransfer.files); });
-    fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-over');
+        handleFiles(e.dataTransfer.files);
+        setTimeout(() => addWorkflowModal.classList.add('hidden'), 500);
+    });
+    fileInput.addEventListener('change', () => {
+        handleFiles(fileInput.files);
+        setTimeout(() => addWorkflowModal.classList.add('hidden'), 500);
+    });
+
     viewToggleBtn.addEventListener('click', () => {
         reportView.classList.toggle('hidden');
-        graphView.classList.toggle('hidden');
-        printGraphBtn.classList.toggle('hidden');
-        viewToggleBtn.textContent = reportView.classList.contains('hidden') ? 'Switch to Report View' : 'Switch to Graph View';
+        graphSearchContainer.classList.toggle('hidden');
+        reportSearchContainer.classList.toggle('hidden');
+        const isReportVisible = !reportView.classList.contains('hidden');
+        viewToggleBtn.textContent = isReportVisible ? 'Switch to Graph View' : 'Switch to Report View';
     });
-    printGraphBtn.addEventListener('click', () => window.print());
+
+    printGraphBtn.addEventListener('click', () => window.electronAPI.printGraph());
     closeConnectionsModalBtn.addEventListener('click', () => connectionsModal.classList.add('hidden'));
     cancelAliasBtn.addEventListener('click', () => connectionsModal.classList.add('hidden'));
+
     saveAliasBtn.addEventListener('click', async () => {
         if (currentEditingDsId) {
             await window.electronAPI.updateAlias(currentEditingDsId, aliasInput.value);
-            connectionsModal.classList.add('hidden'); // This now closes the whole modal
+            connectionsModal.classList.add('hidden');
             currentEditingDsId = null;
+            allData = await window.electronAPI.loadAllData();
+            displayReport(allData.workflows, allData.datasources, allData.connections);
+            renderGraph(allData.workflows, allData.datasources, allData.connections);
         }
     });
+
     reportSearchInput.addEventListener('input', (e) => { const searchTerm = e.target.value.toLowerCase(); displayReport(allData.workflows, allData.datasources, allData.connections, searchTerm); });
+    
     graphSearchInput.addEventListener('input', () => {
         const searchTerm = graphSearchInput.value.toLowerCase();
         graphSearchResults.innerHTML = '';
@@ -509,7 +454,9 @@ window.addEventListener('DOMContentLoaded', () => {
             graphSearchResults.classList.add('hidden');
         }
     });
-    document.addEventListener('click', (e) => { if (!graphSearchInput.contains(e.target)) { graphSearchResults.classList.add('hidden'); } });
+
+    document.addEventListener('click', (e) => { if (graphSearchInput && !graphSearchInput.contains(e.target)) { graphSearchResults.classList.add('hidden'); } });
+    
     graphSearchBtn.addEventListener('click', () => { panToNode(graphSearchInput.value); });
 
     // --- Populate Recents on Startup ---
@@ -531,6 +478,22 @@ window.addEventListener('DOMContentLoaded', () => {
         });
     }
     populateRecents();
+
+    // --- Make the graph responsive to window resizing ---
+    function debounce(func, timeout = 100) {
+        let timer;
+        return (...args) => {
+            clearTimeout(timer);
+            timer = setTimeout(() => { func.apply(this, args); }, timeout);
+        };
+    }
+
+    const debouncedRender = debounce(() => {
+        if(allData.workflows.length > 0) { // Only re-render if there's data
+            renderGraph(allData.workflows, allData.datasources, allData.connections)
+        }
+    });
+    window.addEventListener('resize', debouncedRender);
 });
 
 // --- Global Helper Functions ---
