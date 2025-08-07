@@ -40,17 +40,19 @@
   </div>
 
   <div id="main-view" class="hidden h-screen flex flex-col">
-    <nav class="bg-white shadow-md p-2 flex items-center justify-between flex-shrink-0">
+    <nav class="bg-white shadow-md p-2 flex items-center justify-between flex-shrink-0 relative z-10">
       <div class="flex items-center gap-4">
         <h1 class="text-xl font-bold text-slate-800">Alteryx Lineage Visualizer</h1>
         <button id="add-workflow-btn"
           class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg text-sm">Add
           Workflow</button>
-        <button id="view-toggle-btn"
-          class="text-slate-600 hover:text-blue-600 font-semibold py-2 px-4 rounded-lg text-sm">Switch to Report
-          View</button>
-        <button id="print-graph-btn"
-          class="text-slate-600 hover:text-blue-600 font-semibold py-2 px-4 rounded-lg text-sm">Print Graph</button>
+        
+        <div class="flex items-center rounded-lg shadow-sm border border-gray-200 p-0.5">
+          <button id="show-graph-btn" class="view-toggle-btn px-3 py-1.5 text-sm font-semibold rounded-md">Graph</button>
+          <button id="show-report-btn" class="view-toggle-btn px-3 py-1.5 text-sm font-semibold rounded-md">Report</button>
+          <button id="show-impact-btn" class="view-toggle-btn px-3 py-1.5 text-sm font-semibold rounded-md">Impact</button>
+        </div>
+
       </div>
 
       <div class="flex items-center gap-4">
@@ -82,6 +84,13 @@
           <h2 class="text-2xl font-bold text-slate-900">Report View</h2>
         </div>
         <div id="results" class="space-y-6"></div>
+      </div>
+      <div id="analysis-view" class="hidden absolute inset-0 overflow-y-auto p-8">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-2xl font-bold text-slate-900">Impact Analysis</h2>
+        </div>
+        <div id="analysis-results" class="space-y-4">
+        </div>
       </div>
     </div>
   </div>

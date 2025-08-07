@@ -199,10 +199,22 @@ app.whenReady().then(() => {
         return dbRun('UPDATE datasources SET alias = ? WHERE id = ?', [newAlias, dsId]);
     });
 
+    // --- DESIGN NOTE (2025-08-07) ---
+    // This function de-duplicates connections before they are saved.
+    // We are intentionally creating the unique key using ONLY the connection's
+    // type and path, while IGNORING the query.
+    //
+    // REASON: This simplifies the UI by showing a single link between a
+    // workflow and a data source, even if the workflow uses multiple different
+    // queries against that same data source. This was a specific design choice
+    // to reduce visual clutter in the Inspector and Graph views.
+    //
+    // TO REVERT: To show a separate connection for each unique query,
+    // add `item.value.query` back into the 'key' generation string below.
     const getUniqueConnections = (items) => {
         const uniqueMap = new Map();
         for (const item of items) {
-            const key = `${item.type}|||${item.value.connection}|||${item.value.query}`;
+            const key = `${item.type}|||${item.value.connection}`;
             if (!uniqueMap.has(key)) {
                 uniqueMap.set(key, item);
             }
@@ -238,13 +250,6 @@ app.whenReady().then(() => {
             showDbError(error);
         }
     });
-
-    ipcMain.handle('print-graph', (event) => {
-        const window = BrowserWindow.fromWebContents(event.sender);
-        if (window) {
-            window.webContents.print({ silent: false, printBackground: true });
-        }
-    });
     
     ipcMain.handle('delete-workflow', async (event, workflowId) => {
         if (!db) {
@@ -259,6 +264,77 @@ app.whenReady().then(() => {
             return { success: true };
         } catch (error) {
             await dbRun('ROLLBACK');
+            showDbError(error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('calculate-criticality', async () => {
+        try {
+            const workflows = await dbAll('SELECT * FROM workflows');
+            const connections = await dbAll('SELECT * FROM connections');
+    
+            const dsToWorkflows = new Map(); 
+            const workflowToDs = new Map(); 
+    
+            for (const conn of connections) {
+                if (conn.direction === 'input') {
+                    if (!dsToWorkflows.has(conn.dsId)) dsToWorkflows.set(conn.dsId, []);
+                    dsToWorkflows.get(conn.dsId).push(conn.workflowId);
+                } else { 
+                    if (!workflowToDs.has(conn.workflowId)) workflowToDs.set(conn.workflowId, []);
+                    workflowToDs.get(conn.workflowId).push(conn.dsId);
+                }
+            }
+    
+            const results = [];
+            for (const wf of workflows) {
+                const queue = [];
+                const visited = new Set();
+                let score = 0;
+    
+                const directOutputs = workflowToDs.get(wf.id) || [];
+                for (const dsId of directOutputs) {
+                    const nodeId = `ds-${dsId}`;
+                    if (!visited.has(nodeId)) {
+                        queue.push({ id: nodeId, type: 'datasource' });
+                        visited.add(nodeId);
+                    }
+                }
+                
+                while (queue.length > 0) {
+                    const current = queue.shift();
+                    score++;
+    
+                    const currentId = parseInt(current.id.split('-')[1]);
+    
+                    if (current.type === 'datasource') {
+                        const dependentWorkflows = dsToWorkflows.get(currentId) || [];
+                        for (const nextWfId of dependentWorkflows) {
+                            const nextNodeId = `wf-${nextWfId}`;
+                            if (!visited.has(nextNodeId)) {
+                                visited.add(nextNodeId);
+                                queue.push({ id: nextNodeId, type: 'workflow' });
+                            }
+                        }
+                    } else { 
+                        const nextDsIds = workflowToDs.get(currentId) || [];
+                        for (const nextDsId of nextDsIds) {
+                            const nextNodeId = `ds-${nextDsId}`;
+                            if (!visited.has(nextNodeId)) {
+                                visited.add(nextNodeId);
+                                queue.push({ id: nextNodeId, type: 'datasource' });
+                            }
+                        }
+                    }
+                }
+                results.push({ ...wf, criticalityScore: score });
+            }
+            
+            results.sort((a, b) => b.criticalityScore - a.criticalityScore);
+    
+            return { success: true, data: results };
+        } catch (error) {
             showDbError(error);
             return { success: false, error: error.message };
         }

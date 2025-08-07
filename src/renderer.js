@@ -7,7 +7,7 @@ let d3Graph = {};
 let currentWorkflowToDelete = null;
 
 // --- UI Elements (to be assigned when the DOM is ready) ---
-let loader, fileInput, dropZone, viewToggleBtn, printGraphBtn, reportView,
+let loader, fileInput, dropZone, reportView,
     graphView, tooltipEl, resultsDiv, reportSearchInput, graphSearchInput,
     graphSearchBtn, graphSearchResults, connectionsModal, connectionsModalContent,
     connectionsModalTitle, closeConnectionsModalBtn, aliasEditor,
@@ -15,7 +15,9 @@ let loader, fileInput, dropZone, viewToggleBtn, printGraphBtn, reportView,
     welcomeView, mainView, createBtn, openBtn, recentsList, addWorkflowModal,
     addWorkflowBtn, closeAddWorkflowModalBtn, graphSearchContainer, reportSearchContainer,
     deleteWorkflowBtn, deleteConfirmModal, deletingWorkflowName,
-    deleteConfirmInput, cancelDeleteBtn, confirmDeleteBtn;
+    deleteConfirmInput, cancelDeleteBtn, confirmDeleteBtn,
+    showGraphBtn, showReportBtn, showImpactBtn,
+    analysisView, analysisResults;
 
 // --- Core Functions ---
 async function handleFiles(files) {
@@ -153,6 +155,8 @@ function displayReport(workflows, datasources, connections, searchTerm = '') {
     filteredWorkflows.forEach(workflow => {
         const card = document.createElement('div');
         card.className = 'bg-white p-6 rounded-xl shadow-md';
+        card.id = `workflow-card-${workflow.id}`;
+
         const deleteBtnHTML = `<button onclick="window.requestDeleteWorkflow(${workflow.id}, '${workflow.name.replace(/'/g, "\\'")}')" class="text-slate-400 hover:text-red-600 p-1 rounded-full hover:bg-red-100" title="Delete Workflow">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -216,64 +220,73 @@ function renderPill(type) {
 }
 
 function renderGraph(workflows, datasources, connections) {
-    const graphContainer = d3.select("#graph-container");
-    
-    if (graphContainer.node().offsetParent === null) {
-        return;
-    }
-
-    graphContainer.selectAll("*").remove();
-    if (!workflows || workflows.length === 0 && (!datasources || datasources.length === 0)) {
-        graphContainer.append("div").attr("class", "flex items-center justify-center h-full text-slate-500").text("No data. Drop workflow files to start.");
-        return;
-    }
-    const fileNameCounts = datasources.reduce((acc, ds) => {
-        const fileName = ds.name.split('\\').pop().split('/').pop();
-        acc[fileName] = (acc[fileName] || 0) + 1;
-        return acc;
-    }, {});
-    const duplicateFileNames = new Set();
-    for (const fileName in fileNameCounts) {
-        if (fileNameCounts[fileName] > 1) {
-            duplicateFileNames.add(fileName);
+    return new Promise(resolve => {
+        const graphContainer = d3.select("#graph-container");
+        
+        if (graphContainer.node().offsetParent === null) {
+            resolve();
+            return;
         }
-    }
-    const width = graphContainer.node().getBoundingClientRect().width;
-    const height = graphContainer.node().getBoundingClientRect().height;
-    const zoom = d3.zoom().on("zoom", e => g.attr("transform", e.transform));
-    const svg = graphContainer.append("svg").attr("width", width).attr("height", height).call(zoom);
-    const g = svg.append("g");
-    const tooltip = d3.select(tooltipEl);
-    const wfNodes = workflows.map(d => ({ id: `wf-${d.id}`, name: d.name, type: 'workflow' }));
-    const dsNodes = datasources.map(d => {
-        const fileName = d.name.split('\\').pop().split('/').pop();
-        const smartName = duplicateFileNames.has(fileName) ? d.name : fileName;
-        return { id: `ds-${d.id}`, name: d.name, displayName: d.alias || smartName, type: d.type, alias: d.alias };
+
+        graphContainer.selectAll("*").remove();
+        if (!workflows || workflows.length === 0 && (!datasources || datasources.length === 0)) {
+            graphContainer.append("div").attr("class", "flex items-center justify-center h-full text-slate-500").text("No data. Drop workflow files to start.");
+            resolve();
+            return;
+        }
+        const fileNameCounts = datasources.reduce((acc, ds) => {
+            const fileName = ds.name.split('\\').pop().split('/').pop();
+            acc[fileName] = (acc[fileName] || 0) + 1;
+            return acc;
+        }, {});
+        const duplicateFileNames = new Set();
+        for (const fileName in fileNameCounts) {
+            if (fileNameCounts[fileName] > 1) {
+                duplicateFileNames.add(fileName);
+            }
+        }
+        const width = graphContainer.node().getBoundingClientRect().width;
+        const height = graphContainer.node().getBoundingClientRect().height;
+        const zoom = d3.zoom().on("zoom", e => g.attr("transform", e.transform));
+        const svg = graphContainer.append("svg").attr("width", width).attr("height", height).call(zoom);
+        const g = svg.append("g");
+        const tooltip = d3.select(tooltipEl);
+        const wfNodes = workflows.map(d => ({ id: `wf-${d.id}`, name: d.name, type: 'workflow' }));
+        const dsNodes = datasources.map(d => {
+            const fileName = d.name.split('\\').pop().split('/').pop();
+            const smartName = duplicateFileNames.has(fileName) ? d.name : fileName;
+            return { id: `ds-${d.id}`, name: d.name, displayName: d.alias || smartName, type: d.type, alias: d.alias };
+        });
+        const nodes = [...wfNodes, ...dsNodes];
+        d3Graph.nodes = nodes;
+        d3Graph.svg = svg;
+        d3Graph.zoom = zoom;
+        d3Graph.width = width;
+        d3Graph.height = height;
+        const links = connections.map(d => ({ source: d.direction === 'input' ? `ds-${d.dsId}` : `wf-${d.workflowId}`, target: d.direction === 'input' ? `wf-${d.workflowId}` : `ds-${d.dsId}` }));
+        const simulation = d3.forceSimulation(nodes)
+            .force("link", d3.forceLink(links).id(d => d.id).distance(100))
+            .force("charge", d3.forceManyBody().strength(-300))
+            .force("center", d3.forceCenter(width / 2, height / 2))
+            .on('end', resolve);
+
+        svg.append("defs").append("marker").attr("id", "arrowhead").attr("viewBox", "-0 -5 10 10").attr("refX", 25).attr("refY", 0).attr("orient", "auto").attr("markerWidth", 8).attr("markerHeight", 8).append("svg:path").attr("d", "M0,-5L10,0L0,5").attr("fill", "#94a3b8");
+        const link = g.append("g").selectAll("line").data(links).join("line").attr("class", "link").attr("stroke-width", 2).attr("marker-end", "url(#arrowhead)");
+        const node = g.append("g").selectAll("g").data(nodes).join("g").call(drag(simulation));
+        node.append("circle").filter(d => d.type === 'workflow').attr("r", 15).attr("class", "node-workflow");
+        node.append("rect").filter(d => d.type === 'File' || d.type === 'Database').attr("width", 30).attr("height", 20).attr("x", -15).attr("y", -10).attr("rx", 3).attr("ry", 3).attr("class", "node-datasource");
+        node.append("path").filter(d => d.type === 'API').attr('d', 'M-15,-10 h30 v20 h-30 z M-15,0 h30 M-10,-10 v20 M10,-10 v20').attr('class', 'node-api');
+        node.append("text").attr("class", "node-label").attr("dy", d => d.type === 'workflow' ? 25 : 22).attr("text-anchor", "middle").text(d => { const label = d.displayName || d.name; return label.length > 20 ? label.substring(0, 18) + '...' : label; });
+        node.on("mouseover", (event, d) => { tooltip.transition().duration(200).style("opacity", .9); tooltip.html(d.name).style("left", (event.pageX + 5) + "px").style("top", (event.pageY - 28) + "px"); }).on("mouseout", () => { tooltip.transition().duration(500).style("opacity", 0); });
+        node.on('click', (event, d) => { const nodeData = { id: d.id, name: d.name, alias: d.alias, type: d.type }; showConnectionsModal(nodeData); });
+        simulation.on("tick", () => { link.attr("x1", d => d.source.x).attr("y1", d => d.source.y).attr("x2", d => d.target.x).attr("y2", d => d.target.y); node.attr("transform", d => `translate(${d.x},${d.y})`); });
+        function drag(simulation) {
+            function dragstarted(event, d) { if (!event.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; }
+            function dragged(event, d) { d.fx = event.x; d.fy = event.y; }
+            function dragended(event, d) { if (!event.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }
+            return d3.drag().on("start", dragstarted).on("drag", dragged).on("end", dragended);
+        }
     });
-    const nodes = [...wfNodes, ...dsNodes];
-    d3Graph.nodes = nodes;
-    d3Graph.svg = svg;
-    d3Graph.zoom = zoom;
-    d3Graph.width = width;
-    d3Graph.height = height;
-    const links = connections.map(d => ({ source: d.direction === 'input' ? `ds-${d.dsId}` : `wf-${d.workflowId}`, target: d.direction === 'input' ? `wf-${d.workflowId}` : `ds-${d.dsId}` }));
-    const simulation = d3.forceSimulation(nodes).force("link", d3.forceLink(links).id(d => d.id).distance(100)).force("charge", d3.forceManyBody().strength(-300)).force("center", d3.forceCenter(width / 2, height / 2));
-    svg.append("defs").append("marker").attr("id", "arrowhead").attr("viewBox", "-0 -5 10 10").attr("refX", 25).attr("refY", 0).attr("orient", "auto").attr("markerWidth", 8).attr("markerHeight", 8).append("svg:path").attr("d", "M0,-5L10,0L0,5").attr("fill", "#94a3b8");
-    const link = g.append("g").selectAll("line").data(links).join("line").attr("class", "link").attr("stroke-width", 2).attr("marker-end", "url(#arrowhead)");
-    const node = g.append("g").selectAll("g").data(nodes).join("g").call(drag(simulation));
-    node.append("circle").filter(d => d.type === 'workflow').attr("r", 15).attr("class", "node-workflow");
-    node.append("rect").filter(d => d.type === 'File' || d.type === 'Database').attr("width", 30).attr("height", 20).attr("x", -15).attr("y", -10).attr("rx", 3).attr("ry", 3).attr("class", "node-datasource");
-    node.append("path").filter(d => d.type === 'API').attr('d', 'M-15,-10 h30 v20 h-30 z M-15,0 h30 M-10,-10 v20 M10,-10 v20').attr('class', 'node-api');
-    node.append("text").attr("class", "node-label").attr("dy", d => d.type === 'workflow' ? 25 : 22).attr("text-anchor", "middle").text(d => { const label = d.displayName || d.name; return label.length > 20 ? label.substring(0, 18) + '...' : label; });
-    node.on("mouseover", (event, d) => { tooltip.transition().duration(200).style("opacity", .9); tooltip.html(d.name).style("left", (event.pageX + 5) + "px").style("top", (event.pageY - 28) + "px"); }).on("mouseout", () => { tooltip.transition().duration(500).style("opacity", 0); });
-    node.on('click', (event, d) => { const nodeData = { id: d.id, name: d.name, alias: d.alias, type: d.type }; showConnectionsModal(nodeData); });
-    simulation.on("tick", () => { link.attr("x1", d => d.source.x).attr("y1", d => d.source.y).attr("x2", d => d.target.x).attr("y2", d => d.target.y); node.attr("transform", d => `translate(${d.x},${d.y})`); });
-    function drag(simulation) {
-        function dragstarted(event, d) { if (!event.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; }
-        function dragged(event, d) { d.fx = event.x; d.fy = event.y; }
-        function dragended(event, d) { if (!event.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }
-        return d3.drag().on("start", dragstarted).on("drag", dragged).on("end", dragended);
-    }
 }
 
 function panToNode(nodeName) {
@@ -336,8 +349,6 @@ window.addEventListener('DOMContentLoaded', () => {
     dropZone = document.getElementById('drop-zone');
     fileInput = document.getElementById('file-input');
     loader = document.getElementById('loader');
-    viewToggleBtn = document.getElementById('view-toggle-btn');
-    printGraphBtn = document.getElementById('print-graph-btn');
     reportView = document.getElementById('report-view');
     graphView = document.getElementById('graph-view');
     tooltipEl = document.getElementById('tooltip');
@@ -366,52 +377,112 @@ window.addEventListener('DOMContentLoaded', () => {
     deleteConfirmInput = document.getElementById('delete-confirm-input');
     cancelDeleteBtn = document.getElementById('cancel-delete-btn');
     confirmDeleteBtn = document.getElementById('confirm-delete-btn');
+    showGraphBtn = document.getElementById('show-graph-btn');
+    showReportBtn = document.getElementById('show-report-btn');
+    showImpactBtn = document.getElementById('show-impact-btn');
+    analysisView = document.getElementById('analysis-view');
+    analysisResults = document.getElementById('analysis-results');
 
+    const activeBtnClasses = ['bg-blue-500', 'text-white'];
+    const inactiveBtnClasses = ['text-slate-600', 'hover:bg-slate-100'];
 
-    // --- View Switching Function ---
+    function switchView(viewName) {
+        [graphView, reportView, analysisView].forEach(v => v.classList.add('hidden'));
+        [showGraphBtn, showReportBtn, showImpactBtn].forEach(b => {
+            b.classList.remove(...activeBtnClasses);
+            b.classList.add(...inactiveBtnClasses);
+        });
+        
+        graphSearchContainer.classList.add('hidden');
+        reportSearchContainer.classList.add('hidden');
+
+        let promise = Promise.resolve();
+
+        if (viewName === 'graph') {
+            graphView.classList.remove('hidden');
+            graphSearchContainer.classList.remove('hidden');
+            showGraphBtn.classList.add(...activeBtnClasses);
+            showGraphBtn.classList.remove(...inactiveBtnClasses);
+            promise = renderGraph(allData.workflows, allData.datasources, allData.connections);
+        } else if (viewName === 'report') {
+            reportView.classList.remove('hidden');
+            reportSearchContainer.classList.remove('hidden');
+            showReportBtn.classList.add(...activeBtnClasses);
+            showReportBtn.classList.remove(...inactiveBtnClasses);
+        } else if (viewName === 'impact') {
+            analysisView.classList.remove('hidden');
+            showImpactBtn.classList.add(...activeBtnClasses);
+            showImpactBtn.classList.remove(...inactiveBtnClasses);
+        }
+        return promise;
+    }
+
     const showMainView = async () => {
         welcomeView.classList.add('hidden');
         mainView.classList.remove('hidden');
-
         allData = await window.electronAPI.loadAllData();
         displayReport(allData.workflows, allData.datasources, allData.connections);
-        renderGraph(allData.workflows, allData.datasources, allData.connections);
+        switchView('graph');
     };
 
-    // --- Event Listeners for Welcome Screen ---
-    createBtn.addEventListener('click', async () => {
-        const success = await window.electronAPI.createDbFile();
-        if (success) showMainView();
-    });
-
-    openBtn.addEventListener('click', async () => {
-        const success = await window.electronAPI.openDbFile();
-        if (success) showMainView();
-    });
-
+    // --- Event Listeners ---
+    createBtn.addEventListener('click', async () => { if (await window.electronAPI.createDbFile()) showMainView(); });
+    openBtn.addEventListener('click', async () => { if (await window.electronAPI.openDbFile()) showMainView(); });
     recentsList.addEventListener('click', async (e) => {
-        if (e.target.tagName === 'BUTTON') {
-            const filePath = e.target.dataset.path;
-            if (filePath) {
-                const success = await window.electronAPI.openDbFile(filePath);
-                if (success) showMainView();
+        if (e.target.tagName === 'BUTTON' && e.target.dataset.path) {
+            if (await window.electronAPI.openDbFile(e.target.dataset.path)) showMainView();
+        }
+    });
+    window.electronAPI.onOpenRecentFile(async (filePath) => { if (filePath && await window.electronAPI.openDbFile(filePath)) showMainView(); });
+
+    addWorkflowBtn.addEventListener('click', () => addWorkflowModal.classList.remove('hidden'));
+    closeAddWorkflowModalBtn.addEventListener('click', () => addWorkflowModal.classList.add('hidden'));
+
+    showGraphBtn.addEventListener('click', () => switchView('graph'));
+    showReportBtn.addEventListener('click', () => switchView('report'));
+    showImpactBtn.addEventListener('click', async () => {
+        analysisResults.innerHTML = '<div class="loader-small mx-auto"></div>';
+        await switchView('impact');
+        const result = await window.electronAPI.calculateCriticality();
+
+        if (result.success) {
+            analysisResults.innerHTML = '';
+            const table = document.createElement('table');
+            table.className = 'min-w-full divide-y divide-gray-200 bg-white rounded-lg shadow-md';
+            table.innerHTML = `
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rank</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Workflow Name</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Criticality Score</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200"></tbody>
+            `;
+            const tbody = table.querySelector('tbody');
+            if (result.data.length === 0) {
+                 analysisResults.innerHTML = '<p class="text-slate-500">No workflows to analyze.</p>';
+            } else {
+                result.data.forEach((wf, index) => {
+                    const row = tbody.insertRow();
+                    const escapedName = wf.name.replace(/'/g, "\\'");
+                    row.innerHTML = `
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${index + 1}</td>
+                        <td class="px-6 py-4 text-sm text-gray-800 break-all">${wf.name}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-600">${wf.criticalityScore}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                            <button onclick="window.jumpToGraphNode('${escapedName}')" class="text-indigo-600 hover:text-indigo-900">Graph</button>
+                            <button onclick="window.jumpToReportCard(${wf.id})" class="text-indigo-600 hover:text-indigo-900">Report</button>
+                        </td>
+                    `;
+                });
+                analysisResults.appendChild(table);
             }
+        } else {
+            analysisResults.innerHTML = '<p class="text-red-500">Error calculating impact scores.</p>';
+            console.error("Failed to calculate criticality:", result.error);
         }
-    });
-
-    window.electronAPI.onOpenRecentFile(async (filePath) => {
-        if (filePath) {
-            const success = await window.electronAPI.openDbFile(filePath);
-            if (success) showMainView();
-        }
-    });
-
-    addWorkflowBtn.addEventListener('click', () => {
-        addWorkflowModal.classList.remove('hidden');
-    });
-
-    closeAddWorkflowModalBtn.addEventListener('click', () => {
-        addWorkflowModal.classList.add('hidden');
     });
 
     dropZone.addEventListener('click', () => fileInput.click());
@@ -428,20 +499,6 @@ window.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => addWorkflowModal.classList.add('hidden'), 500);
     });
 
-    viewToggleBtn.addEventListener('click', () => {
-        graphView.classList.toggle('hidden');
-        reportView.classList.toggle('hidden');
-        graphSearchContainer.classList.toggle('hidden');
-        reportSearchContainer.classList.toggle('hidden');
-        const isReportVisible = !reportView.classList.contains('hidden');
-        viewToggleBtn.textContent = isReportVisible ? 'Switch to Graph View' : 'Switch to Report View';
-
-        if (!graphView.classList.contains('hidden')) {
-            renderGraph(allData.workflows, allData.datasources, allData.connections);
-        }
-    });
-
-    printGraphBtn.addEventListener('click', () => window.electronAPI.printGraph());
     closeConnectionsModalBtn.addEventListener('click', () => connectionsModal.classList.add('hidden'));
     cancelAliasBtn.addEventListener('click', () => connectionsModal.classList.add('hidden'));
 
@@ -457,7 +514,8 @@ window.addEventListener('DOMContentLoaded', () => {
     });
 
     reportSearchInput.addEventListener('input', (e) => { const searchTerm = e.target.value.toLowerCase(); displayReport(allData.workflows, allData.datasources, allData.connections, searchTerm); });
-    
+    reportSearchInput.addEventListener('focus', () => reportSearchInput.select());
+
     graphSearchInput.addEventListener('input', () => {
         const searchTerm = graphSearchInput.value.toLowerCase();
         graphSearchResults.innerHTML = '';
@@ -477,12 +535,11 @@ window.addEventListener('DOMContentLoaded', () => {
             graphSearchResults.classList.add('hidden');
         }
     });
+    graphSearchInput.addEventListener('focus', () => graphSearchInput.select());
 
     document.addEventListener('click', (e) => { if (graphSearchInput && !graphSearchInput.contains(e.target)) { graphSearchResults.classList.add('hidden'); } });
+    graphSearchBtn.addEventListener('click', () => panToNode(graphSearchInput.value));
     
-    graphSearchBtn.addEventListener('click', () => { panToNode(graphSearchInput.value); });
-    
-    // --- Delete Workflow Listeners ---
     deleteWorkflowBtn.addEventListener('click', () => {
         if (currentWorkflowToDelete) {
             connectionsModal.classList.add('hidden');
@@ -491,22 +548,18 @@ window.addEventListener('DOMContentLoaded', () => {
             deleteConfirmInput.focus();
         }
     });
-
     cancelDeleteBtn.addEventListener('click', () => {
         deleteConfirmModal.classList.add('hidden');
         deleteConfirmInput.value = '';
         confirmDeleteBtn.disabled = true;
         currentWorkflowToDelete = null;
     });
-
     deleteConfirmInput.addEventListener('input', () => {
         confirmDeleteBtn.disabled = deleteConfirmInput.value !== 'DELETE';
     });
-
     confirmDeleteBtn.addEventListener('click', async () => {
         if (currentWorkflowToDelete && deleteConfirmInput.value === 'DELETE') {
             const result = await window.electronAPI.deleteWorkflow(currentWorkflowToDelete.id);
-            
             deleteConfirmModal.classList.add('hidden');
             deleteConfirmInput.value = '';
             confirmDeleteBtn.disabled = true;
@@ -522,8 +575,6 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-
-    // --- Startup ---
     async function populateRecents() {
         const recents = await window.electronAPI.getRecentWorkspaces();
         recentsList.innerHTML = '';
@@ -543,38 +594,44 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     populateRecents();
 
-    function debounce(func, timeout = 100) {
-        let timer;
-        return (...args) => {
-            clearTimeout(timer);
-            timer = setTimeout(() => { func.apply(this, args); }, timeout);
-        };
-    }
-
-    const debouncedRender = debounce(() => {
-        if(allData.workflows.length > 0) {
-            renderGraph(allData.workflows, allData.datasources, allData.connections)
-        }
-    });
+    function debounce(func, timeout = 100) { let timer; return (...args) => { clearTimeout(timer); timer = setTimeout(() => { func.apply(this, args); }, timeout); }; }
+    const debouncedRender = debounce(() => { if (allData.workflows.length > 0) renderGraph(allData.workflows, allData.datasources, allData.connections) });
     window.addEventListener('resize', debouncedRender);
+
+    // --- Global Helper Functions ---
+    window.toggleQuery = (elementId, arrowId) => {
+        document.getElementById(elementId)?.classList.toggle('hidden');
+        document.getElementById(arrowId)?.classList.toggle('rotate-90');
+    };
+    
+    window.panToNodeAndClose = (nodeName) => {
+        connectionsModal.classList.add('hidden');
+        panToNode(nodeName);
+    };
+    
+    window.requestDeleteWorkflow = (id, name) => {
+        currentWorkflowToDelete = { id, name };
+        deletingWorkflowName.textContent = name;
+        deleteConfirmModal.classList.remove('hidden');
+        deleteConfirmInput.focus();
+    };
+    
+    window.jumpToGraphNode = async (workflowName) => {
+        await switchView('graph');
+        panToNode(workflowName);
+    };
+    
+    window.jumpToReportCard = (workflowId) => {
+        switchView('report');
+        const card = document.getElementById(`workflow-card-${workflowId}`);
+        if (card) {
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            card.classList.add('ring-2', 'ring-indigo-500', 'ring-offset-2');
+            setTimeout(() => {
+                card.classList.remove('ring-2', 'ring-indigo-500', 'ring-offset-2');
+            }, 2500);
+        }
+    };
+    
+    window.showConnectionsModal = showConnectionsModal;
 });
-
-// --- Global Helper Functions ---
-window.toggleQuery = (elementId, arrowId) => {
-    document.getElementById(elementId)?.classList.toggle('hidden');
-    document.getElementById(arrowId)?.classList.toggle('rotate-90');
-};
-
-window.panToNodeAndClose = (nodeName) => {
-    connectionsModal.classList.add('hidden');
-    panToNode(nodeName);
-};
-
-window.requestDeleteWorkflow = (id, name) => {
-    currentWorkflowToDelete = { id, name };
-    deletingWorkflowName.textContent = name;
-    deleteConfirmModal.classList.remove('hidden');
-    deleteConfirmInput.focus();
-};
-
-window.showConnectionsModal = showConnectionsModal;
