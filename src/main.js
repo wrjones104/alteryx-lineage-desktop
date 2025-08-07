@@ -202,7 +202,6 @@ app.whenReady().then(() => {
     const getUniqueConnections = (items) => {
         const uniqueMap = new Map();
         for (const item of items) {
-            // A more robust key including the item type, connection path, and query
             const key = `${item.type}|||${item.value.connection}|||${item.value.query}`;
             if (!uniqueMap.has(key)) {
                 uniqueMap.set(key, item);
@@ -237,6 +236,31 @@ app.whenReady().then(() => {
             await processConnections(workflowData.outputs, 'output');
         } catch (error) {
             showDbError(error);
+        }
+    });
+
+    ipcMain.handle('print-graph', (event) => {
+        const window = BrowserWindow.fromWebContents(event.sender);
+        if (window) {
+            window.webContents.print({ silent: false, printBackground: true });
+        }
+    });
+    
+    ipcMain.handle('delete-workflow', async (event, workflowId) => {
+        if (!db) {
+            showDbError({ message: "Database not open." });
+            return { success: false, error: "Database not open." };
+        }
+        try {
+            await dbRun('BEGIN TRANSACTION');
+            await dbRun('DELETE FROM connections WHERE workflowId = ?', [workflowId]);
+            await dbRun('DELETE FROM workflows WHERE id = ?', [workflowId]);
+            await dbRun('COMMIT');
+            return { success: true };
+        } catch (error) {
+            await dbRun('ROLLBACK');
+            showDbError(error);
+            return { success: false, error: error.message };
         }
     });
 

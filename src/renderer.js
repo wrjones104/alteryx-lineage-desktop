@@ -4,6 +4,7 @@
 let allData = { workflows: [], datasources: [], connections: [] };
 let currentEditingDsId = null;
 let d3Graph = {};
+let currentWorkflowToDelete = null;
 
 // --- UI Elements (to be assigned when the DOM is ready) ---
 let loader, fileInput, dropZone, viewToggleBtn, printGraphBtn, reportView,
@@ -12,7 +13,9 @@ let loader, fileInput, dropZone, viewToggleBtn, printGraphBtn, reportView,
     connectionsModalTitle, closeConnectionsModalBtn, aliasEditor,
     originalNameEl, aliasInput, saveAliasBtn, cancelAliasBtn,
     welcomeView, mainView, createBtn, openBtn, recentsList, addWorkflowModal,
-    addWorkflowBtn, closeAddWorkflowModalBtn, graphSearchContainer, reportSearchContainer;
+    addWorkflowBtn, closeAddWorkflowModalBtn, graphSearchContainer, reportSearchContainer,
+    deleteWorkflowBtn, deleteConfirmModal, deletingWorkflowName,
+    deleteConfirmInput, cancelDeleteBtn, confirmDeleteBtn;
 
 // --- Core Functions ---
 async function handleFiles(files) {
@@ -150,7 +153,16 @@ function displayReport(workflows, datasources, connections, searchTerm = '') {
     filteredWorkflows.forEach(workflow => {
         const card = document.createElement('div');
         card.className = 'bg-white p-6 rounded-xl shadow-md';
-        let content = `<h3 class="text-xl font-bold text-slate-800 border-b pb-2 mb-4">${workflow.name}</h3><div class="grid grid-cols-1 md:grid-cols-2 gap-6">`;
+        const deleteBtnHTML = `<button onclick="window.requestDeleteWorkflow(${workflow.id}, '${workflow.name.replace(/'/g, "\\'")}')" class="text-slate-400 hover:text-red-600 p-1 rounded-full hover:bg-red-100" title="Delete Workflow">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                               </button>`;
+        let content = `<div class="flex justify-between items-center border-b pb-2 mb-4">
+                        <h3 class="text-xl font-bold text-slate-800 break-all">${workflow.name}</h3>
+                        ${deleteBtnHTML}
+                       </div>`;
+
         const workflowConnections = connections.filter(c => c.workflowId === workflow.id);
         const inputs = workflowConnections.filter(c => c.direction === 'input');
         const outputs = workflowConnections.filter(c => c.direction === 'output');
@@ -163,6 +175,7 @@ function displayReport(workflows, datasources, connections, searchTerm = '') {
                 return renderListItem(item, color, queryCounter++);
             }).join('')}</ul>`;
         };
+        content += `<div class="grid grid-cols-1 md:grid-cols-2 gap-6">`;
         content += `<div><h4 class="text-lg font-semibold text-green-700 mb-3">Inputs</h4>${renderList(inputs, 'green')}</div>`;
         content += `<div><h4 class="text-lg font-semibold text-red-700 mb-3">Outputs</h4>${renderList(outputs, 'red')}</div>`;
         content += '</div>';
@@ -179,7 +192,7 @@ function renderListItem(item, color, id) {
                      <div class="break-all">${renderPill(item.type)} <b>${item.alias || item.value.connection}</b>
                         ${item.alias ? `<span class="text-xs text-gray-500">(${item.value.connection})</span>` : ''}
                      </div>
-                     <button onclick="window.showConnectionsModal({ id: 'ds-${item.id}', name: '${item.value.connection}', alias: '${item.alias || ''}', type: '${item.type}' })" class="ml-2 p-1 rounded-full hover:bg-gray-200 flex-shrink-0">
+                     <button onclick="window.showConnectionsModal({ id: 'ds-${item.id}', name: '${item.value.connection.replace(/'/g, "\\'")}', alias: '${(item.alias || '').replace(/'/g, "\\'")}', type: '${item.type}' })" class="ml-2 p-1 rounded-full hover:bg-gray-200 flex-shrink-0">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.536L16.732 3.732z" /></svg>
                      </button>
                    </div>`;
@@ -204,6 +217,11 @@ function renderPill(type) {
 
 function renderGraph(workflows, datasources, connections) {
     const graphContainer = d3.select("#graph-container");
+    
+    if (graphContainer.node().offsetParent === null) {
+        return;
+    }
+
     graphContainer.selectAll("*").remove();
     if (!workflows || workflows.length === 0 && (!datasources || datasources.length === 0)) {
         graphContainer.append("div").attr("class", "flex items-center justify-center h-full text-slate-500").text("No data. Drop workflow files to start.");
@@ -291,13 +309,18 @@ function showConnectionsModal(nodeData) {
         content += `<div class="mt-4 pt-4 border-t"><button onclick="toggleQuery('${uniqueId}', '${arrowId}')" class="flex items-center text-sm font-semibold text-slate-700 hover:text-slate-900 focus:outline-none"><svg id="${arrowId}" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1 transition-transform duration-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>Query Details</button><div id="${uniqueId}" class="hidden mt-2 space-y-2">${queriesHTML}</div></div>`;
     }
     connectionsModalContent.innerHTML = content;
-    if (!isWorkflow) {
+    
+    if (isWorkflow) {
+        deleteWorkflowBtn.classList.remove('hidden');
+        aliasEditor.classList.add('hidden');
+        currentWorkflowToDelete = { id: nodeId, name: nodeData.name };
+    } else {
+        deleteWorkflowBtn.classList.add('hidden');
         aliasEditor.classList.remove('hidden');
         currentEditingDsId = nodeId;
         originalNameEl.textContent = nodeData.name;
         aliasInput.value = nodeData.alias || '';
-    } else {
-        aliasEditor.classList.add('hidden');
+        currentWorkflowToDelete = null; 
     }
     connectionsModal.classList.remove('hidden');
 }
@@ -305,16 +328,11 @@ function showConnectionsModal(nodeData) {
 // --- Startup Block ---
 window.addEventListener('DOMContentLoaded', () => {
     // --- Assign UI Elements from the DOM ---
-    // Views
     welcomeView = document.getElementById('welcome-view');
     mainView = document.getElementById('main-view');
-
-    // Welcome View Elements
     createBtn = document.getElementById('create-new-btn');
     openBtn = document.getElementById('open-existing-btn');
     recentsList = document.getElementById('recents-list');
-
-    // Main View Elements
     dropZone = document.getElementById('drop-zone');
     fileInput = document.getElementById('file-input');
     loader = document.getElementById('loader');
@@ -324,16 +342,12 @@ window.addEventListener('DOMContentLoaded', () => {
     graphView = document.getElementById('graph-view');
     tooltipEl = document.getElementById('tooltip');
     resultsDiv = document.getElementById('results');
-
-    // Search Elements
     graphSearchContainer = document.getElementById('graph-search-container');
     reportSearchContainer = document.getElementById('report-search-container');
     reportSearchInput = document.getElementById('report-search-input');
     graphSearchInput = document.getElementById('graph-search-input');
     graphSearchBtn = document.getElementById('graph-search-btn');
     graphSearchResults = document.getElementById('graph-search-results');
-
-    // Modals and their content
     addWorkflowModal = document.getElementById('add-workflow-modal');
     addWorkflowBtn = document.getElementById('add-workflow-btn');
     closeAddWorkflowModalBtn = document.getElementById('close-add-workflow-modal-btn');
@@ -346,6 +360,13 @@ window.addEventListener('DOMContentLoaded', () => {
     aliasInput = document.getElementById('alias-input');
     saveAliasBtn = document.getElementById('save-alias-btn');
     cancelAliasBtn = document.getElementById('cancel-alias-btn');
+    deleteWorkflowBtn = document.getElementById('delete-workflow-btn');
+    deleteConfirmModal = document.getElementById('delete-confirm-modal');
+    deletingWorkflowName = document.getElementById('deleting-workflow-name');
+    deleteConfirmInput = document.getElementById('delete-confirm-input');
+    cancelDeleteBtn = document.getElementById('cancel-delete-btn');
+    confirmDeleteBtn = document.getElementById('confirm-delete-btn');
+
 
     // --- View Switching Function ---
     const showMainView = async () => {
@@ -378,7 +399,6 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // --- Listen for 'Open Recent' message from the main menu ---
     window.electronAPI.onOpenRecentFile(async (filePath) => {
         if (filePath) {
             const success = await window.electronAPI.openDbFile(filePath);
@@ -386,7 +406,6 @@ window.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // --- Event Listeners for Add Workflow Modal ---
     addWorkflowBtn.addEventListener('click', () => {
         addWorkflowModal.classList.remove('hidden');
     });
@@ -395,7 +414,6 @@ window.addEventListener('DOMContentLoaded', () => {
         addWorkflowModal.classList.add('hidden');
     });
 
-    // --- Event Listeners for Main View ---
     dropZone.addEventListener('click', () => fileInput.click());
     dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
     dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
@@ -417,6 +435,10 @@ window.addEventListener('DOMContentLoaded', () => {
         reportSearchContainer.classList.toggle('hidden');
         const isReportVisible = !reportView.classList.contains('hidden');
         viewToggleBtn.textContent = isReportVisible ? 'Switch to Graph View' : 'Switch to Report View';
+
+        if (!graphView.classList.contains('hidden')) {
+            renderGraph(allData.workflows, allData.datasources, allData.connections);
+        }
     });
 
     printGraphBtn.addEventListener('click', () => window.electronAPI.printGraph());
@@ -459,8 +481,49 @@ window.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('click', (e) => { if (graphSearchInput && !graphSearchInput.contains(e.target)) { graphSearchResults.classList.add('hidden'); } });
     
     graphSearchBtn.addEventListener('click', () => { panToNode(graphSearchInput.value); });
+    
+    // --- Delete Workflow Listeners ---
+    deleteWorkflowBtn.addEventListener('click', () => {
+        if (currentWorkflowToDelete) {
+            connectionsModal.classList.add('hidden');
+            deletingWorkflowName.textContent = currentWorkflowToDelete.name;
+            deleteConfirmModal.classList.remove('hidden');
+            deleteConfirmInput.focus();
+        }
+    });
 
-    // --- Populate Recents on Startup ---
+    cancelDeleteBtn.addEventListener('click', () => {
+        deleteConfirmModal.classList.add('hidden');
+        deleteConfirmInput.value = '';
+        confirmDeleteBtn.disabled = true;
+        currentWorkflowToDelete = null;
+    });
+
+    deleteConfirmInput.addEventListener('input', () => {
+        confirmDeleteBtn.disabled = deleteConfirmInput.value !== 'DELETE';
+    });
+
+    confirmDeleteBtn.addEventListener('click', async () => {
+        if (currentWorkflowToDelete && deleteConfirmInput.value === 'DELETE') {
+            const result = await window.electronAPI.deleteWorkflow(currentWorkflowToDelete.id);
+            
+            deleteConfirmModal.classList.add('hidden');
+            deleteConfirmInput.value = '';
+            confirmDeleteBtn.disabled = true;
+            currentWorkflowToDelete = null;
+
+            if (result.success) {
+                allData = await window.electronAPI.loadAllData();
+                displayReport(allData.workflows, allData.datasources, allData.connections);
+                renderGraph(allData.workflows, allData.datasources, allData.connections);
+            } else {
+                console.error('Failed to delete workflow:', result.error);
+            }
+        }
+    });
+
+
+    // --- Startup ---
     async function populateRecents() {
         const recents = await window.electronAPI.getRecentWorkspaces();
         recentsList.innerHTML = '';
@@ -480,7 +543,6 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     populateRecents();
 
-    // --- Make the graph responsive to window resizing ---
     function debounce(func, timeout = 100) {
         let timer;
         return (...args) => {
@@ -490,7 +552,7 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 
     const debouncedRender = debounce(() => {
-        if(allData.workflows.length > 0) { // Only re-render if there's data
+        if(allData.workflows.length > 0) {
             renderGraph(allData.workflows, allData.datasources, allData.connections)
         }
     });
@@ -506,6 +568,13 @@ window.toggleQuery = (elementId, arrowId) => {
 window.panToNodeAndClose = (nodeName) => {
     connectionsModal.classList.add('hidden');
     panToNode(nodeName);
+};
+
+window.requestDeleteWorkflow = (id, name) => {
+    currentWorkflowToDelete = { id, name };
+    deletingWorkflowName.textContent = name;
+    deleteConfirmModal.classList.remove('hidden');
+    deleteConfirmInput.focus();
 };
 
 window.showConnectionsModal = showConnectionsModal;

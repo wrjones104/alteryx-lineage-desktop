@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveWorkflow: (workflowData) => ipcRenderer.invoke('save-workflow', workflowData),
   getRecentWorkspaces: () => ipcRenderer.invoke('get-recent-workspaces'),
   printGraph: () => ipcRenderer.invoke('print-graph'),
+  deleteWorkflow: (workflowId) => ipcRenderer.invoke('delete-workflow', workflowId),
 
   // Listeners the frontend can use for messages "pushed" from the backend
   onUpdateRecents: (callback) => ipcRenderer.on('update-recents', (event, ...args) => callback(...args)),
