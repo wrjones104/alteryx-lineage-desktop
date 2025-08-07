@@ -12,6 +12,11 @@ pre { white-space: pre-wrap; word-wrap: break-word; }
 .node-label { font-size: 10px; pointer-events: none; }
 .tooltip { position: absolute; text-align: center; padding: 8px; font: 12px sans-serif; background: #1f2937; color: white; border-radius: 8px; pointer-events: none; opacity: 0; transition: opacity 0.2s; }
 
+.splash-image {
+    border-radius: 15px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
 @media print {
     body * { visibility: hidden; }
     #graph-container, #graph-container * { visibility: visible; }
