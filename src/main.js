@@ -1,5 +1,5 @@
 // src/main.js (Final Corrected Version)
-const { app, BrowserWindow, ipcMain, dialog, Menu, MenuItem } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, MenuItem, shell } = require('electron');
 const path = require('node:path');
 const sqlite3 = require('sqlite3').verbose();
 const Store = require('electron-store');
@@ -133,6 +133,17 @@ function createWindow() {
         {
             label: 'View',
             submenu: [{ role: 'reload' }, { role: 'toggleDevTools' }]
+        },
+        {
+            label: 'Help',
+            submenu: [
+                {
+                    label: 'How to Use this Tool',
+                    click: async () => {
+                        await shell.openExternal('https://github.com/wrjones104/alteryx-lineage-desktop/blob/main/USAGE.md');
+                    }
+                }
+            ]
         }
     ];
 
@@ -143,7 +154,7 @@ function createWindow() {
 
     const mainWindowReady = new Promise(resolve => mainWindow.once('ready-to-show', resolve));
     const minSplashTime = new Promise(resolve => {
-        const delay = app.isPackaged ? 0 : 2500;
+        const delay = app.isPackaged ? 2000 : 3000;
         setTimeout(resolve, delay);
     });
 
@@ -187,6 +198,19 @@ app.whenReady().then(() => {
     ipcMain.handle('update-alias', async (event, { dsId, newAlias }) => {
         return dbRun('UPDATE datasources SET alias = ? WHERE id = ?', [newAlias, dsId]);
     });
+
+    const getUniqueConnections = (items) => {
+        const uniqueMap = new Map();
+        for (const item of items) {
+            // A more robust key including the item type, connection path, and query
+            const key = `${item.type}|||${item.value.connection}|||${item.value.query}`;
+            if (!uniqueMap.has(key)) {
+                uniqueMap.set(key, item);
+            }
+        }
+        return Array.from(uniqueMap.values());
+    };
+
     ipcMain.handle('save-workflow', async (event, workflowData) => {
         try {
             let workflow = await dbGet('SELECT id FROM workflows WHERE name = ?', [workflowData.name]);
@@ -198,7 +222,8 @@ app.whenReady().then(() => {
             }
 
             const processConnections = async (items, direction) => {
-                for (const item of items) {
+                const uniqueItems = getUniqueConnections(items);
+                for (const item of uniqueItems) {
                     let datasource = await dbGet('SELECT id FROM datasources WHERE name = ?', [item.value.connection]);
                     if (!datasource) {
                         const result = await dbRun('INSERT INTO datasources (name, type, alias) VALUES (?, ?, ?)', [item.value.connection, item.type, '']);
@@ -214,8 +239,6 @@ app.whenReady().then(() => {
             showDbError(error);
         }
     });
-
-    
 
     createWindow();
 

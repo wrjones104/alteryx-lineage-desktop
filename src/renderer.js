@@ -411,6 +411,7 @@ window.addEventListener('DOMContentLoaded', () => {
     });
 
     viewToggleBtn.addEventListener('click', () => {
+        graphView.classList.toggle('hidden');
         reportView.classList.toggle('hidden');
         graphSearchContainer.classList.toggle('hidden');
         reportSearchContainer.classList.toggle('hidden');

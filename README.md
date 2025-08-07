@@ -1,6 +1,6 @@
 # Alteryx Lineage Viewer (Desktop)
 
-![Application Screenshot](app-graph.png)
+<img src="src/assets/splash.jpg" alt="logo" width="30%" height="30%"/>
 
 ## 1. High-Level Goal
 
