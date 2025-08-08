@@ -583,7 +583,7 @@ window.addEventListener('DOMContentLoaded', () => {
             return;
         }
         recents.forEach(path => {
-            const fileName = path.split('\\').pop().split('/').pop();
+            const fileName = path.split('\\').pop().split('/').pop().replace('.sqlite', '');
             const recentBtn = document.createElement('button');
             recentBtn.className = 'w-full text-left p-2 rounded-md hover:bg-slate-200 transition-colors truncate';
             recentBtn.textContent = fileName;
@@ -598,7 +598,7 @@ window.addEventListener('DOMContentLoaded', () => {
     const debouncedRender = debounce(() => { if (allData.workflows.length > 0) renderGraph(allData.workflows, allData.datasources, allData.connections) });
     window.addEventListener('resize', debouncedRender);
 
-    // --- Global Helper Functions ---
+    // --- Global Helper Functions (defined inside DOMContentLoaded to have access to scope) ---
     window.toggleQuery = (elementId, arrowId) => {
         document.getElementById(elementId)?.classList.toggle('hidden');
         document.getElementById(arrowId)?.classList.toggle('rotate-90');

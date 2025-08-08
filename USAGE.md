@@ -1,4 +1,4 @@
-# Alteryx Lineage Viewer - Usage Guide
+# Alteryx Lineage Visualizer - Usage Guide
 
 This guide explains how to use the Alteryx Lineage Viewer desktop application to map and understand your Alteryx workflows.
 
@@ -16,22 +16,35 @@ You can also access these options from the **File** menu at any time.
 
 ## The Main Interface
 
-Once a workspace is open, you are presented with the main interface:
-* **Top Navigation Bar:** Contains all the main controls, such as adding new workflows and switching between views.
+Once a workspace is open, you are presented with the main interface. You can switch between three main views using the buttons in the top navigation bar:
+
 * **Graph View:** The primary, interactive visualization of your data lineage.
 * **Report View:** A detailed, list-based view of all workflows and their specific inputs and outputs.
+* **Impact View:** A ranked table showing the "Criticality Score" of each workflow.
 
-## Adding & Inspecting Workflows
+### Adding, Inspecting, and Deleting Workflows
 
-* **Adding Workflows:** Click the "Add Workflow" button in the top navigation to open a modal. You can then either drag-and-drop your `.yxmd` files into the box or click the box to open a file browser.
-* **Inspecting Nodes:** In the Graph View, click on any node (a workflow or a data source) to open the **Node Inspector**. This pop-up shows a summary of that node's direct inputs and outputs.
-* **Creating Aliases:** When inspecting a data source node, you can provide a user-friendly **Alias** (e.g., "Centric CRM Source") to replace a long or cryptic file path or connection string. This alias will be used in both the Graph and Report views.
+* **Adding Workflows:** Click the **Add Workflow** button in the top navigation to open a modal. You can then either drag-and-drop your `.yxmd` files into the box or click the box to open a file browser.
+* **Inspecting Nodes:** In the **Graph View**, click on any node (a workflow or a data source) to open the **Node Inspector**. This pop-up shows a summary of that node's direct inputs and outputs.
+* **Creating Aliases:** When inspecting a data source node, you can provide a user-friendly **Alias** (e.g., "Centric CRM Source") to replace a long or cryptic file path. This alias will be used throughout the application.
+* **Deleting Workflows:** You can delete a workflow from two places:
+    1.  In the **Report View**, by clicking the trash can icon on the workflow's card.
+    2.  In the **Graph View**, by clicking a workflow node to open the Node Inspector and then clicking the trash can icon.
+    *A confirmation prompt will require you to type "DELETE" to prevent accidental deletion.*
 
-## Handling Complex Alteryx Tools (Advanced)
+### The Impact Analysis View
 
-Some Alteryx tools, like the **Download Tool** or the **Python Tool**, don't write their inputs and outputs to the workflow's XML in a standard way. The parser cannot automatically detect them.
+The Impact Analysis view is designed to help you identify the most critical workflows in your ecosystem. It displays a ranked table with three columns:
 
-To solve this, you can manually define the inputs and outputs for **any tool** by adding a special block of text to its **Annotation** box in Alteryx.
+* **Rank:** The workflow's rank, from most to least critical.
+* **Workflow Name:** The name of the `.yxmd` file.
+* **Criticality Score:** A number representing the workflow's total "blast radius." It is the count of every unique data source and workflow that depends on this workflow's outputs, directly or indirectly. A higher score means a failure in this workflow will have a larger ripple effect.
+
+In the **Actions** column, you can click **Graph** or **Report** to immediately jump to that specific workflow in the corresponding view.
+
+### Handling Complex Alteryx Tools (Advanced)
+
+Some Alteryx tools, like the **Download Tool** or the **Python Tool**, don't write their inputs and outputs to the workflow's XML in a standard way. The parser cannot automatically detect them. To solve this, you can manually define the inputs and outputs for **any tool** by adding a special block of text to its **Annotation** box in Alteryx.
 
 #### The `lineage` Annotation Syntax
 

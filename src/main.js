@@ -168,7 +168,7 @@ function createWindow() {
             recentMenu.submenu.clear();
             recentWorkspaces.forEach(filePath => {
                 recentMenu.submenu.append(new MenuItem({
-                    label: filePath.split('\\').pop().split('/').pop(),
+                    label: filePath.split('\\').pop().split('/').pop().replace('.sqlite', ''),
                     click: () => mainWindow.webContents.send('open-recent-file', filePath)
                 }));
             });
