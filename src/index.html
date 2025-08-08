@@ -71,12 +71,27 @@
           <input type="text" id="report-search-input" placeholder="Search report..."
             class="w-full max-w-xs bg-white rounded border border-gray-300 focus:border-indigo-500 text-base outline-none text-gray-700 py-1 px-3 leading-8 transition-colors">
         </div>
+        
+        <div id="impact-search-container" class="relative hidden">
+            <input type="search" id="impact-search-input" placeholder="Filter workflows..." class="w-full max-w-xs bg-white rounded border border-gray-300 focus:border-indigo-500 text-base outline-none text-gray-700 py-1 px-3 leading-8 transition-colors">
+        </div>
       </div>
     </nav>
 
     <div id="content-container" class="flex-grow relative">
       <div id="graph-view" class="absolute inset-0">
-        <div id="graph-container" class="w-full h-full"></div>
+        <div id="graph-container" class="w-full h-full">
+            <div id="graph-drop-zone" class="hidden h-full w-full flex items-center justify-center p-8">
+                <div class="drop-zone-content w-full max-w-lg rounded-lg p-10 text-center border-2 border-dashed border-slate-400 bg-slate-100">
+                    <div class="flex flex-col items-center justify-center pointer-events-none">
+                        <svg class="w-16 h-16 text-slate-400 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m.75 12l3 3m0 0l3-3m-3 3v-6m-1.5-9H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"></path>
+                        </svg>
+                        <p class="text-slate-700 font-semibold">Drop .yxmd files here to add them</p>
+                    </div>
+                </div>
+            </div>
+        </div>
         <div id="tooltip" class="tooltip"></div>
       </div>
       <div id="report-view" class="hidden absolute inset-0 overflow-y-auto p-8">
@@ -154,8 +169,6 @@
           </div>
         </div>
         <input type="file" id="file-input" multiple accept=".yxmd" class="hidden">
-        <div id="loader" class="hidden flex-col items-center justify-center mt-6">
-        </div>
       </div>
     </div>
   </div>
@@ -175,6 +188,11 @@
             <button id="confirm-delete-btn" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-red-300 disabled:cursor-not-allowed" disabled>Delete</button>
         </div>
     </div>
+  </div>
+
+  <div id="progress-overlay" class="hidden fixed inset-0 bg-gray-600 bg-opacity-75 flex flex-col items-center justify-center z-50">
+    <div class="loader-spinner mb-4"></div>
+    <p id="progress-text" class="text-lg font-medium text-white"></p>
   </div>
 
   <script src="./renderer.js"></script>

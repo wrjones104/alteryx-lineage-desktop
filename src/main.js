@@ -154,7 +154,7 @@ function createWindow() {
 
     const mainWindowReady = new Promise(resolve => mainWindow.once('ready-to-show', resolve));
     const minSplashTime = new Promise(resolve => {
-        const delay = app.isPackaged ? 2000 : 3000;
+        const delay = 3000;
         setTimeout(resolve, delay);
     });
 
@@ -223,6 +223,14 @@ app.whenReady().then(() => {
     };
 
     ipcMain.handle('save-workflow', async (event, workflowData) => {
+        // Standardize connection paths to lowercase to prevent duplicates
+        const allConnections = [...workflowData.inputs, ...workflowData.outputs];
+        for (const item of allConnections) {
+            if (item.value && item.value.connection) {
+                item.value.connection = item.value.connection.toLowerCase();
+            }
+        }
+
         try {
             let workflow = await dbGet('SELECT id FROM workflows WHERE name = ?', [workflowData.name]);
             if (workflow) {
@@ -258,8 +266,24 @@ app.whenReady().then(() => {
         }
         try {
             await dbRun('BEGIN TRANSACTION');
+
+            // Find all datasources connected to this workflow before deleting connections
+            const connectedDs = await dbAll('SELECT DISTINCT dsId FROM connections WHERE workflowId = ?', [workflowId]);
+            const dsIds = connectedDs.map(r => r.dsId);
+
+            // Delete the connections and the workflow itself
             await dbRun('DELETE FROM connections WHERE workflowId = ?', [workflowId]);
             await dbRun('DELETE FROM workflows WHERE id = ?', [workflowId]);
+
+            // Check each previously connected datasource to see if it's now orphaned
+            for (const dsId of dsIds) {
+                const isConnected = await dbGet('SELECT 1 FROM connections WHERE dsId = ? LIMIT 1', [dsId]);
+                if (!isConnected) {
+                    // This datasource is no longer connected to anything, so delete it
+                    await dbRun('DELETE FROM datasources WHERE id = ?', [dsId]);
+                }
+            }
+
             await dbRun('COMMIT');
             return { success: true };
         } catch (error) {
