@@ -18,22 +18,31 @@ let fileInput, dropZone, reportView,
     deleteConfirmInput, cancelDeleteBtn, confirmDeleteBtn,
     showGraphBtn, showReportBtn, showImpactBtn,
     analysisView, analysisResults, graphDropZone,
-    progressOverlay, progressText, impactSearchInput, impactSearchContainer;
+    progressOverlay, progressText, impactSearchInput, impactSearchContainer,
+    syncServerBtn, serverSettingsModal, closeServerModalBtn,
+    serverCredentialsView, serverWorkflowListView, serverUrlInput,
+    clientIdInput, clientSecretInput, workflowChecklist,
+    selectAllBtn, deselectAllBtn, serverModalBackBtn, serverModalCancelBtn,
+    serverModalConnectBtn, serverModalSyncBtn, serverConnectError;
 
 // --- Core Functions ---
 async function handleFiles(files) {
     if (files.length === 0) return;
 
     progressOverlay.classList.remove('hidden');
+    
+    // Convert FileList to an array to process it
+    const filesArray = Array.from(files);
 
-    for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        progressText.textContent = `Processing ${i + 1} of ${files.length}: ${file.name}`;
+    for (let i = 0; i < filesArray.length; i++) {
+        const file = filesArray[i];
+        progressText.textContent = `Processing ${i + 1} of ${filesArray.length}: ${file.name}`;
 
         if (file.name.endsWith('.yxmd')) {
             try {
                 const fileContent = await readFileAsText(file);
-                const workflowData = parseWorkflow(fileContent, file.name);
+                const workflowData = { name: file.name, content: fileContent };
+                // Use the IPC handler which will call the shared parser
                 await window.electronAPI.saveWorkflow(workflowData);
             } catch (error) {
                 console.error(`Error processing file ${file.name}:`, error);
@@ -54,6 +63,7 @@ async function handleFiles(files) {
     if (fileInput) fileInput.value = '';
 }
 
+
 function readFileAsText(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -63,6 +73,8 @@ function readFileAsText(file) {
     });
 }
 
+// NOTE: The parseWorkflow function is now handled in main.js to be shared.
+// This function remains here only as a fallback or for potential future use if needed.
 function parseWorkflow(xmlString, fileName) {
     const parser = new DOMParser();
     const xmlDoc = parser.parseFromString(xmlString, "text/xml");
@@ -405,6 +417,22 @@ window.addEventListener('DOMContentLoaded', () => {
     progressOverlay = document.getElementById('progress-overlay');
     progressText = document.getElementById('progress-text');
     impactSearchInput = document.getElementById('impact-search-input');
+    syncServerBtn = document.getElementById('sync-server-btn');
+    serverSettingsModal = document.getElementById('server-settings-modal');
+    closeServerModalBtn = document.getElementById('close-server-modal-btn');
+    serverCredentialsView = document.getElementById('server-credentials-view');
+    serverWorkflowListView = document.getElementById('server-workflow-list-view');
+    serverUrlInput = document.getElementById('server-url-input');
+    clientIdInput = document.getElementById('client-id-input');
+    clientSecretInput = document.getElementById('client-secret-input');
+    workflowChecklist = document.getElementById('workflow-checklist');
+    selectAllBtn = document.getElementById('select-all-btn');
+    deselectAllBtn = document.getElementById('deselect-all-btn');
+    serverModalBackBtn = document.getElementById('server-modal-back-btn');
+    serverModalCancelBtn = document.getElementById('server-modal-cancel-btn');
+    serverModalConnectBtn = document.getElementById('server-modal-connect-btn');
+    serverModalSyncBtn = document.getElementById('server-modal-sync-btn');
+    serverConnectError = document.getElementById('server-connect-error');
 
     const activeBtnClasses = ['bg-blue-500', 'text-white'];
     const inactiveBtnClasses = ['text-slate-600', 'hover:bg-slate-100'];
@@ -544,6 +572,127 @@ window.addEventListener('DOMContentLoaded', () => {
         graphDropZone.classList.add('hidden');
         graphDropZone.classList.remove('absolute', 'bg-slate-50/80', 'backdrop-blur-sm');
         handleFiles(e.dataTransfer.files);
+    });
+    
+    // --- SERVER SYNC LISTENERS ---
+    const resetServerModal = () => {
+        serverCredentialsView.classList.remove('hidden');
+        serverWorkflowListView.classList.add('hidden');
+        serverModalBackBtn.classList.add('hidden');
+        serverModalSyncBtn.classList.add('hidden');
+        serverModalConnectBtn.classList.remove('hidden');
+        serverModalCancelBtn.classList.remove('hidden');
+        workflowChecklist.innerHTML = '';
+        serverConnectError.classList.add('hidden');
+        serverModalConnectBtn.disabled = false;
+        serverModalConnectBtn.querySelector('.btn-text').classList.remove('hidden');
+        serverModalConnectBtn.querySelector('.loader-spinner-small').classList.add('hidden');
+    };
+
+    syncServerBtn.addEventListener('click', async () => {
+        resetServerModal();
+        const creds = await window.electronAPI.getServerCredentials();
+        if (creds) {
+            serverUrlInput.value = creds.baseUrl || '';
+            clientIdInput.value = creds.clientId || '';
+            clientSecretInput.value = creds.clientSecret || '';
+        }
+        serverSettingsModal.classList.remove('hidden');
+    });
+
+    closeServerModalBtn.addEventListener('click', () => serverSettingsModal.classList.add('hidden'));
+    serverModalCancelBtn.addEventListener('click', () => serverSettingsModal.classList.add('hidden'));
+    serverModalBackBtn.addEventListener('click', resetServerModal);
+
+    serverModalConnectBtn.addEventListener('click', async () => {
+        const credentials = {
+            baseUrl: serverUrlInput.value.trim().replace(/\/$/, ''),
+            clientId: clientIdInput.value.trim(),
+            clientSecret: clientSecretInput.value.trim(),
+        };
+
+        if (!credentials.baseUrl || !credentials.clientId || !credentials.clientSecret) {
+            serverConnectError.textContent = 'Please fill in Server URL, API Key, and API Secret.';
+            serverConnectError.classList.remove('hidden');
+            return;
+        }
+
+        serverModalConnectBtn.disabled = true;
+        serverModalConnectBtn.querySelector('.btn-text').classList.add('hidden');
+        serverModalConnectBtn.querySelector('.loader-spinner-small').classList.remove('hidden');
+        serverConnectError.classList.add('hidden');
+        
+        await window.electronAPI.saveServerCredentials(credentials);
+        const result = await window.electronAPI.fetchServerWorkflows(credentials);
+
+        if (result.success) {
+            workflowChecklist.innerHTML = result.data.map(wf => `
+                <label class="flex items-center space-x-3 p-2 rounded-md hover:bg-gray-100 cursor-pointer">
+                    <input type="checkbox" data-id="${wf.id}" data-name="${wf.name}" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                    <span class="text-sm text-gray-800 truncate">${wf.name}</span>
+                </label>
+            `).join('');
+            
+            serverCredentialsView.classList.add('hidden');
+            serverWorkflowListView.classList.remove('hidden');
+            serverModalConnectBtn.classList.add('hidden');
+            serverModalCancelBtn.classList.add('hidden');
+            serverModalBackBtn.classList.remove('hidden');
+            serverModalSyncBtn.classList.remove('hidden');
+        } else {
+            serverConnectError.textContent = result.error;
+            serverConnectError.classList.remove('hidden');
+            resetServerModal();
+        }
+    });
+
+    const updateSyncButton = () => {
+        const selectedCount = workflowChecklist.querySelectorAll('input:checked').length;
+        serverModalSyncBtn.disabled = selectedCount === 0;
+        serverModalSyncBtn.textContent = `Sync Selected (${selectedCount})`;
+    };
+
+    workflowChecklist.addEventListener('change', updateSyncButton);
+    selectAllBtn.addEventListener('click', () => {
+        workflowChecklist.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = true);
+        updateSyncButton();
+    });
+    deselectAllBtn.addEventListener('click', () => {
+        workflowChecklist.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+        updateSyncButton();
+    });
+
+    serverModalSyncBtn.addEventListener('click', async () => {
+        const selectedWorkflows = Array.from(workflowChecklist.querySelectorAll('input:checked'))
+            .map(cb => ({ id: cb.dataset.id, name: cb.dataset.name }));
+        
+        if (selectedWorkflows.length === 0) return;
+
+        serverSettingsModal.classList.add('hidden');
+        progressOverlay.classList.remove('hidden');
+        
+        const credentials = await window.electronAPI.getServerCredentials();
+        const result = await window.electronAPI.syncWithServer({ ...credentials, selectedWorkflows });
+
+        if (result.success) {
+            progressText.textContent = 'Sync complete! Reloading data...';
+            allData = await window.electronAPI.loadAllData();
+            displayReport(allData.workflows, allData.datasources, allData.connections);
+            await renderGraph(allData.workflows, allData.datasources, allData.connections);
+        } else {
+            alert(`Sync failed: ${result.error}`);
+        }
+        
+        setTimeout(() => {
+            progressOverlay.classList.add('hidden');
+            progressText.textContent = '';
+        }, 2000);
+    });
+
+    window.electronAPI.onSyncProgress((data) => {
+        if (progressText) {
+            progressText.textContent = data.message;
+        }
     });
 
     closeConnectionsModalBtn.addEventListener('click', () => connectionsModal.classList.add('hidden'));

@@ -18,6 +18,8 @@
   },
   "license": "MIT",
   "dependencies": {
+    "adm-zip": "^0.5.16",
+    "axios": "^1.11.0",
     "electron-squirrel-startup": "^1.0.1",
     "electron-store": "^7.0.3",
     "sqlite3": "^5.1.7"

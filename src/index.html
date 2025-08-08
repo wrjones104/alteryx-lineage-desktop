@@ -1,202 +1,47 @@
-<!DOCTYPE html>
-<html>
-
-<head>
-  <meta charset="UTF-8" />
-  <title>Alteryx Lineage Visualizer</title>
-  <link rel="stylesheet" href="index.css" />
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://d3js.org/d3.v7.min.js"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-</head>
-
-<body class="bg-slate-50 text-slate-800">
-
-  <div id="welcome-view" class="flex items-center justify-center h-screen">
-    <div class="text-center">
-      <h1 class="text-4xl font-bold text-slate-800 mb-8">Alteryx Lineage Visualizer</h1>
-      <div class="space-y-6">
-        <div>
-          <button id="create-new-btn"
-            class="w-64 bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg transition-colors">
-            Create New Workspace
-          </button>
-          <p class="text-slate-500 text-sm mt-2">Start with a fresh, empty workspace file.</p>
-        </div>
-        <div>
-          <button id="open-existing-btn"
-            class="w-64 bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg transition-colors">
-            Open Existing Workspace
-          </button>
-          <p class="text-slate-500 text-sm mt-2">Open a pre-existing .sqlite workspace file.</p>
-        </div>
-      </div>
-      <div class="mt-12 w-96 mx-auto">
-        <h2 class="text-lg font-semibold text-slate-700 border-b pb-2 mb-2">Recent Workspaces</h2>
-        <div id="recents-list" class="space-y-2">
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div id="main-view" class="hidden h-screen flex flex-col">
-    <nav class="bg-white shadow-md p-2 flex items-center justify-between flex-shrink-0 relative z-10">
-      <div class="flex items-center gap-4">
-        <h1 class="text-xl font-bold text-slate-800">Alteryx Lineage Visualizer</h1>
-        <button id="add-workflow-btn"
-          class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg text-sm">Add
-          Workflow</button>
+<div id="server-settings-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl flex flex-col max-h-[90vh]">
         
-        <div class="flex items-center rounded-lg shadow-sm border border-gray-200 p-0.5">
-          <button id="show-graph-btn" class="view-toggle-btn px-3 py-1.5 text-sm font-semibold rounded-md">Graph</button>
-          <button id="show-report-btn" class="view-toggle-btn px-3 py-1.5 text-sm font-semibold rounded-md">Report</button>
-          <button id="show-impact-btn" class="view-toggle-btn px-3 py-1.5 text-sm font-semibold rounded-md">Impact</button>
+        <div class="flex justify-between items-center p-4 border-b">
+            <h3 class="text-lg font-bold text-gray-900">Sync with Alteryx Server</h3>
+            <button id="close-server-modal-btn" class="text-gray-500 hover:text-gray-800 text-2xl leading-none">&times;</button>
         </div>
 
-      </div>
-
-      <div class="flex items-center gap-4">
-        <div id="graph-search-container" class="relative">
-          <div class="flex items-center gap-2">
-            <input type="search" id="graph-search-input" placeholder="Find a node..."
-              class="w-full max-w-xs bg-white rounded border border-gray-300 focus:border-indigo-500 text-base outline-none text-gray-700 py-1 px-3 leading-8 transition-colors">
-            <button id="graph-search-btn"
-              class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg">Go</button>
-          </div>
-          <div id="graph-search-results"
-            class="hidden absolute z-10 w-full bg-white rounded-md shadow-lg mt-1 max-h-60 overflow-y-auto"></div>
+        <div id="server-credentials-view" class="p-6 space-y-4">
+            <div>
+                <label for="server-url-input" class="block text-sm font-medium text-gray-700">Server Base URL</label>
+                <input type="text" id="server-url-input" placeholder="https://alteryx.yourcompany.com" class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm">
+            </div>
+            <div>
+                <label for="client-id-input" class="block text-sm font-medium text-gray-700">API Key (Client ID)</label>
+                <input type="text" id="client-id-input" class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm">
+            </div>
+            <div>
+                <label for="client-secret-input" class="block text-sm font-medium text-gray-700">API Secret</label>
+                <input type="password" id="client-secret-input" class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm">
+            </div>
+             <div id="server-connect-error" class="hidden text-sm text-red-600 bg-red-50 p-3 rounded-md"></div>
         </div>
 
-        <div id="report-search-container" class="relative hidden">
-          <input type="text" id="report-search-input" placeholder="Search report..."
-            class="w-full max-w-xs bg-white rounded border border-gray-300 focus:border-indigo-500 text-base outline-none text-gray-700 py-1 px-3 leading-8 transition-colors">
-        </div>
-        
-        <div id="impact-search-container" class="relative hidden">
-            <input type="search" id="impact-search-input" placeholder="Filter workflows..." class="w-full max-w-xs bg-white rounded border border-gray-300 focus:border-indigo-500 text-base outline-none text-gray-700 py-1 px-3 leading-8 transition-colors">
-        </div>
-      </div>
-    </nav>
-
-    <div id="content-container" class="flex-grow relative">
-      <div id="graph-view" class="absolute inset-0">
-        <div id="graph-container" class="w-full h-full">
-            <div id="graph-drop-zone" class="hidden h-full w-full flex items-center justify-center p-8">
-                <div class="drop-zone-content w-full max-w-lg rounded-lg p-10 text-center border-2 border-dashed border-slate-400 bg-slate-100">
-                    <div class="flex flex-col items-center justify-center pointer-events-none">
-                        <svg class="w-16 h-16 text-slate-400 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m.75 12l3 3m0 0l3-3m-3 3v-6m-1.5-9H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"></path>
-                        </svg>
-                        <p class="text-slate-700 font-semibold">Drop .yxmd files here to add them</p>
-                    </div>
+        <div id="server-workflow-list-view" class="hidden p-6 space-y-4 flex flex-col flex-grow min-h-0">
+            <div class="flex justify-between items-center">
+                <p class="font-semibold text-gray-800">Select workflows to sync:</p>
+                <div class="flex gap-2">
+                    <button id="select-all-btn" class="text-sm px-3 py-1 bg-gray-200 rounded-md hover:bg-gray-300">Select All</button>
+                    <button id="deselect-all-btn" class="text-sm px-3 py-1 bg-gray-200 rounded-md hover:bg-gray-300">Deselect All</button>
                 </div>
             </div>
+            <div id="workflow-checklist" class="flex-grow overflow-y-auto border rounded-md p-3 bg-gray-50 space-y-2">
+                </div>
         </div>
-        <div id="tooltip" class="tooltip"></div>
-      </div>
-      <div id="report-view" class="hidden absolute inset-0 overflow-y-auto p-8">
-        <div class="flex justify-between items-center mb-4">
-          <h2 class="text-2xl font-bold text-slate-900">Report View</h2>
-        </div>
-        <div id="results" class="space-y-6"></div>
-      </div>
-      <div id="analysis-view" class="hidden absolute inset-0 overflow-y-auto p-8">
-        <div class="flex justify-between items-center mb-4">
-          <h2 class="text-2xl font-bold text-slate-900">Impact Analysis</h2>
-        </div>
-        <div id="analysis-results" class="space-y-4">
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div id="connections-modal"
-    class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center p-4">
-    <div class="relative mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white flex flex-col max-h-[85vh]">
-
-      <div class="flex justify-between items-center border-b pb-2 flex-shrink-0">
-        <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">Node Inspector</h3>
-        <div class="flex items-center gap-2">
-          <button id="delete-workflow-btn" class="hidden text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-100" title="Delete Workflow">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-          </button>
-          <button id="close-connections-modal" class="text-gray-500 hover:text-gray-800">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      <div class="mt-4 overflow-y-auto" id="modal-content"></div>
-
-      <div id="alias-editor" class="hidden mt-4 pt-4 border-t flex-shrink-0">
-        <p class="text-sm text-gray-500 mb-1 text-left font-semibold">Original Name:</p>
-        <p id="original-name" class="text-xs text-gray-500 bg-gray-100 p-2 rounded break-all text-left"></p>
-        <p class="text-sm text-gray-500 mt-4 mb-1 text-left font-semibold">Alias:</p>
-        <input type="text" id="alias-input"
-          class="w-full bg-white rounded border border-gray-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 text-base outline-none text-gray-700 py-1 px-3 leading-8 transition-colors duration-200 ease-in-out"
-          placeholder="e.g., Centric Source">
-        <div class="flex gap-2 mt-4">
-          <button id="save-alias-btn"
-            class="px-4 py-2 bg-blue-500 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-300">Save</button>
-          <button id="cancel-alias-btn"
-            class="px-4 py-2 bg-gray-200 text-gray-800 text-base font-medium rounded-md w-full shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-300">Cancel</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div id="add-workflow-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center">
-    <div class="bg-white rounded-xl shadow-md relative">
-      <button id="close-add-workflow-modal-btn" class="absolute top-2 right-2 text-gray-500 hover:text-gray-800">
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-        </svg>
-      </button>
-      <div id="upload-container" class="p-8">
-        <div id="drop-zone" class="drop-zone w-full rounded-lg p-10 text-center cursor-pointer">
-          <div class="flex flex-col items-center justify-center">
-            <svg class="w-16 h-16 text-slate-400 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none"
-              viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round"
-                d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m.75 12l3 3m0 0l3-3m-3 3v-6m-1.5-9H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-            </svg>
-            <p class="text-slate-700 font-semibold">Drag & drop your .yxmd files here</p>
-            <p class="text-slate-500 text-sm mt-1">or click to select files</p>
-          </div>
-        </div>
-        <input type="file" id="file-input" multiple accept=".yxmd" class="hidden">
-      </div>
-    </div>
-  </div>
-
-  <div id="delete-confirm-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center">
-    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
-        <h3 class="text-lg font-bold text-gray-900">Delete Workflow</h3>
-        <p class="mt-2 text-sm text-gray-600">
-            This action cannot be undone. This will permanently delete the <b id="deleting-workflow-name" class="break-all"></b> workflow and all of its connections.
-        </p>
-        <p class="mt-4 text-sm text-gray-500">
-            Please type <strong class="text-red-600">DELETE</strong> into the box below to confirm.
-        </p>
-        <input type="text" id="delete-confirm-input" class="mt-2 w-full bg-white rounded border border-gray-300 focus:border-red-500 focus:ring-2 focus:ring-red-200 text-base outline-none text-gray-700 py-1 px-3 leading-8 transition-colors duration-200 ease-in-out">
-        <div class="mt-4 flex justify-end gap-3">
-            <button id="cancel-delete-btn" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Cancel</button>
-            <button id="confirm-delete-btn" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-red-300 disabled:cursor-not-allowed" disabled>Delete</button>
+        
+        <div class="p-4 bg-gray-50 border-t flex justify-end gap-3">
+            <button id="server-modal-back-btn" class="hidden px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Back</button>
+            <button id="server-modal-cancel-btn" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Cancel</button>
+            <button id="server-modal-connect-btn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 w-32">
+                <span class="btn-text">Connect</span>
+                <span class="loader-spinner-small hidden"></span>
+            </button>
+            <button id="server-modal-sync-btn" class="hidden px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:bg-emerald-300" disabled>Sync Selected (0)</button>
         </div>
     </div>
   </div>
-
-  <div id="progress-overlay" class="hidden fixed inset-0 bg-gray-600 bg-opacity-75 flex flex-col items-center justify-center z-50">
-    <div class="loader-spinner mb-4"></div>
-    <p id="progress-text" class="text-lg font-medium text-white"></p>
-  </div>
-
-  <script src="./renderer.js"></script>
-
-</body>
-
-</html>
